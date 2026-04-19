@@ -2,15 +2,19 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
+// Импорт хранилища авторизации
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
+// Получение данных пользователя из хранилища
 const authStore = useAuthStore()
 
 const incidents = ref([])
+// Флаг загрузки данных
 const loading = ref(true)
 const total = ref(0)
+// Текущая страница
 const page = ref(1)
 const limit = ref(20)
 const search = ref('')

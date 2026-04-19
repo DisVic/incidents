@@ -1,12 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
+// Маршруты приложения
+// Маршруты приложения
 const routes = [
+  // Публичные маршруты (доступны без авторизации)
   {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/Login.vue'),
-    meta: { guest: true }
+    meta: { guest: true } // Только для неавторизованных
   },
   {
     path: '/forgot-password',
@@ -20,16 +23,17 @@ const routes = [
     component: () => import('@/views/ResetPassword.vue'),
     meta: { guest: true }
   },
+  // Основной layout с проверкой авторизации
   {
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true }, // Требует авторизации для всех вложенных маршрутов
     children: [
       {
         path: '',
         name: 'Dashboard',
         component: () => import('@/views/Dashboard.vue'),
-        meta: { requiresManager: true }
+        meta: { requiresManager: true } // Только для менеджеров
       },
       {
         path: 'incidents',
@@ -50,7 +54,7 @@ const routes = [
         path: 'users',
         name: 'Users',
         component: () => import('@/views/Users.vue'),
-        meta: { requiresAdmin: true }
+        meta: { requiresAdmin: true } // Только для админов
       },
       {
         path: 'settings',
@@ -58,7 +62,6 @@ const routes = [
         component: () => import('@/views/Settings.vue'),
         meta: { requiresAdmin: true }
       },
-
       {
         path: 'notifications',
         name: 'Notifications',
@@ -77,6 +80,7 @@ const routes = [
       }
     ]
   },
+  // Страница 404 — ловит все неизвестные маршруты
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
@@ -84,27 +88,33 @@ const routes = [
   }
 ]
 
+// Создание роутера
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(), // HTML5 History API для чистых URL
   routes
 })
 
-// Navigation guards
+// Глобальный guard для проверки прав доступа перед переходом
+// Глобальная защита маршрутов
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   
-  // Wait for auth initialization if not done yet
+  // Ждём инициализации авторизации перед проверкой прав
   if (!authStore.initialized) {
     await authStore.init()
   }
   
+  // Перенаправляем на логин, если требуется авторизация
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
   } else if (to.meta.guest && authStore.isAuthenticated) {
+    // Авторизованных пользователей не пускаем на страницы логина
     next({ name: 'Incidents' })
   } else if (to.meta.requiresAdmin && !authStore.isAdmin) {
+    // Ограничиваем доступ к админским страницам
     next({ name: 'Incidents' })
   } else if (to.meta.requiresManager && !authStore.isManager) {
+    // Ограничиваем доступ к страницам менеджеров
     next({ name: 'Incidents' })
   } else {
     next()

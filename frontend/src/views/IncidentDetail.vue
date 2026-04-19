@@ -2,11 +2,13 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
+// Импорт хранилища авторизации
 import { useAuthStore } from '@/stores/auth'
 import { useModal } from '@/composables/useModal'
 
 const route = useRoute()
 const router = useRouter()
+// Получение данных пользователя из хранилища
 const authStore = useAuthStore()
 const { alert: showAlert, confirm: showConfirm, prompt: showPrompt } = useModal()
 
@@ -14,6 +16,7 @@ const incident = ref(null)
 const comments = ref([])
 const attachments = ref([])
 const history = ref([])
+// Флаг загрузки данных
 const loading = ref(true)
 const newComment = ref('')
 const commentLoading = ref(false)

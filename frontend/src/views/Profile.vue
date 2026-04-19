@@ -1,12 +1,15 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
+// Импорт хранилища авторизации
 import { useAuthStore } from '@/stores/auth'
 import Modal from '@/components/Modal.vue'
 
+// Получение данных пользователя из хранилища
 const authStore = useAuthStore()
 
 const user = ref(null)
+// Флаг загрузки данных
 const loading = ref(true)
 const saving = ref(false)
 const message = ref({ type: '', text: '' })
@@ -60,6 +63,7 @@ const userInitial = computed(() => {
   return user.value?.full_name?.charAt(0)?.toUpperCase() || 'U'
 })
 
+// Инициализация при монтировании компонента
 onMounted(async () => {
   try {
     const userRes = await axios.get('/api/auth/me')
@@ -88,6 +92,7 @@ onMounted(async () => {
   }
 })
 
+// Сохранение данных
 async function saveSettings() {
   saving.value = true
   message.value = { type: '', text: '' }
@@ -211,6 +216,7 @@ async function uploadAvatar(event) {
   event.target.value = ''
 }
 
+// Удаление элемента
 async function removeAvatar() {
   try {
     await axios.post(`/api/users/${authStore.user?.id}/avatar`, {

@@ -2,17 +2,21 @@
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
+// Импорт хранилища авторизации
 import { useAuthStore } from '@/stores/auth'
 import { useModal } from '@/composables/useModal'
 
 const router = useRouter()
+// Получение данных пользователя из хранилища
 const authStore = useAuthStore()
 const { alert, confirm } = useModal()
 
 const users = ref([])
 const roles = ref([])
 const departments = ref([])
+// Флаг загрузки данных
 const loading = ref(true)
+// Видимость модального окна
 const showModal = ref(false)
 const modalMode = ref('create')
 const editingUserId = ref(null)
@@ -78,6 +82,7 @@ function clearFilters() {
 
 const modalTitle = computed(() => modalMode.value === 'create' ? 'Новый пользователь' : 'Редактировать пользователя')
 
+// Инициализация при монтировании компонента
 onMounted(async () => {
   await Promise.all([
     loadUsers(),
@@ -142,11 +147,13 @@ function openEditModal(user) {
   showModal.value = true
 }
 
+// Закрытие модального окна
 function closeModal() {
   showModal.value = false
   formErrors.value = {}
 }
 
+// Сохранение данных
 async function saveUser() {
   formErrors.value = {}
   
@@ -250,6 +257,7 @@ function getRoleColor(role) {
   return colors[role] || 'bg-gray-100 text-gray-700'
 }
 
+// Форматирование даты
 function formatDate(dateStr) {
   if (!dateStr) return '—'
   const date = new Date(dateStr)

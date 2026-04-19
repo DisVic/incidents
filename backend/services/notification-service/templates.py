@@ -6,7 +6,7 @@ from typing import Optional
 
 
 def get_base_styles() -> str:
-    """Base CSS styles for email templates"""
+    """Базовые CSS стили для email-шаблонов"""
     return """
         body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f5f5f5; }
         .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
@@ -42,7 +42,7 @@ def render_email(
     warning: Optional[str] = None,
     danger: Optional[str] = None
 ) -> str:
-    """Render email with base template"""
+    """Сборка HTML письма из шаблона"""
     warning_html = f'<div class="warning">{warning}</div>' if warning else ''
     danger_html = f'<div class="danger">{danger}</div>' if danger else ''
     button_html = f'<a href="{button_url}" class="btn">{button_text}</a>' if button_url else ''
@@ -78,7 +78,7 @@ def render_email(
 
 
 def format_datetime(dt_str: str) -> str:
-    """Format datetime string for display"""
+    """Форматирование даты для отображения"""
     if not dt_str:
         return "—"
     try:
@@ -90,7 +90,7 @@ def format_datetime(dt_str: str) -> str:
 
 
 def get_priority_class(priority: str) -> str:
-    """Get CSS class for priority"""
+    """CSS класс для цвета приоритета"""
     priority_lower = priority.lower() if priority else ''
     if 'критич' in priority_lower:
         return 'priority-critical'
@@ -102,7 +102,7 @@ def get_priority_class(priority: str) -> str:
 
 
 def incident_info_block(incident: dict) -> str:
-    """Generate incident info HTML block"""
+    """HTML блок с информацией об инциденте"""
     return f"""
     <div class="incident-info">
         <div class="info-row">
@@ -141,12 +141,11 @@ def incident_info_block(incident: dict) -> str:
     """
 
 
-# ============================================
-# SPECIFIC EMAIL TEMPLATES
-# ============================================
+# Шаблоны email для различных событий
+
 
 def template_incident_created(incident: dict, base_url: str = "http://localhost:3000") -> str:
-    """Email template for incident created notification"""
+    """Письмо о создании нового инцидента"""
     content = f"""
     <p>Добрый день!</p>
     <p>Создан новый инцидент, требующий внимания:</p>
@@ -161,7 +160,7 @@ def template_incident_created(incident: dict, base_url: str = "http://localhost:
 
 
 def template_incident_assigned(incident: dict, base_url: str = "http://localhost:3000") -> str:
-    """Email template for incident assigned notification"""
+    """Письмо о назначении инцидента исполнителю"""
     content = f"""
     <p>Добрый день!</p>
     <p>Вам назначен инцидент для решения:</p>
@@ -177,7 +176,7 @@ def template_incident_assigned(incident: dict, base_url: str = "http://localhost
 
 
 def template_incident_resolved(incident: dict, base_url: str = "http://localhost:3000") -> str:
-    """Email template for incident resolved notification"""
+    """Письмо о решении инцидента (требуется подтверждение)"""
     content = f"""
     <p>Добрый день!</p>
     <p>Инцидент был отмечен как решённый. Пожалуйста, подтвердите закрытие:</p>
@@ -193,7 +192,7 @@ def template_incident_resolved(incident: dict, base_url: str = "http://localhost
 
 
 def template_incident_closed(incident: dict, base_url: str = "http://localhost:3000") -> str:
-    """Email template for incident closed notification"""
+    """Письмо о закрытии инцидента"""
     content = f"""
     <p>Добрый день!</p>
     <p>Инцидент был закрыт:</p>
@@ -208,7 +207,7 @@ def template_incident_closed(incident: dict, base_url: str = "http://localhost:3
 
 
 def template_sla_overdue(incident: dict, overdue_hours: float = 0, base_url: str = "http://localhost:3000") -> str:
-    """Email template for SLA overdue notification"""
+    """Письмо о просрочке SLA"""
     content = f"""
     <p>Добрый день!</p>
     <p><strong>Инцидент превысил установленный SLA!</strong></p>
@@ -226,7 +225,7 @@ def template_sla_overdue(incident: dict, overdue_hours: float = 0, base_url: str
 
 
 def template_escalation_level1(incident: dict, percent_used: float = 80, base_url: str = "http://localhost:3000") -> str:
-    """Email template for escalation level 1 notification (80% SLA)"""
+    """Письмо эскалации уровня 1 (80% SLA использовано)"""
     content = f"""
     <p>Добрый день!</p>
     <p>Инцидент использовал {percent_used:.0f}% времени SLA и требует вашего внимания:</p>
@@ -243,7 +242,7 @@ def template_escalation_level1(incident: dict, percent_used: float = 80, base_ur
 
 
 def template_escalation_level2(incident: dict, overdue_hours: float = 0, base_url: str = "http://localhost:3000") -> str:
-    """Email template for escalation level 2 notification (overdue)"""
+    """Письмо эскалации уровня 2 (инцидент просрочен)"""
     content = f"""
     <p>Добрый день!</p>
     <p><strong>КРИТИЧНО: Инцидент просрочен и требует НЕМЕДЛЕННОГО вмешательства!</strong></p>
@@ -266,7 +265,7 @@ def template_escalation_level2(incident: dict, overdue_hours: float = 0, base_ur
 
 
 def template_status_changed(incident: dict, old_status: str, new_status: str, comment: str = "", base_url: str = "http://localhost:3000") -> str:
-    """Email template for status changed notification"""
+    """Письмо об изменении статуса инцидента"""
     comment_html = f'<p><strong>Комментарий:</strong> {comment}</p>' if comment else ''
     content = f"""
     <p>Добрый день!</p>
@@ -284,7 +283,7 @@ def template_status_changed(incident: dict, old_status: str, new_status: str, co
 
 
 def template_new_comment(incident: dict, author: str, comment: str, base_url: str = "http://localhost:3000") -> str:
-    """Email template for new comment notification"""
+    """Письмо о новом комментарии к инциденту"""
     content = f"""
     <p>Добрый день!</p>
     <p><strong>{author}</strong> оставил комментарий к инциденту:</p>
@@ -302,7 +301,7 @@ def template_new_comment(incident: dict, author: str, comment: str, base_url: st
 
 
 def template_priority_changed(incident: dict, old_priority: str, new_priority: str, new_deadline: str = "", base_url: str = "http://localhost:3000") -> str:
-    """Email template for priority changed notification"""
+    """Письмо об изменении приоритета инцидента"""
     deadline_html = f'<p><strong>Новый дедлайн:</strong> {format_datetime(new_deadline)}</p>' if new_deadline else ''
     content = f"""
     <p>Добрый день!</p>
@@ -320,7 +319,7 @@ def template_priority_changed(incident: dict, old_priority: str, new_priority: s
 
 
 def template_password_changed(base_url: str = "http://localhost:3000") -> str:
-    """Email template for password change notification"""
+    """Письмо об изменении пароля"""
     content = f"""
     <p>Добрый день!</p>
     <p>Ваш пароль был успешно изменён.</p>

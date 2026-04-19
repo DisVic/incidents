@@ -2,9 +2,11 @@
 import { ref, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+// Импорт хранилища авторизации
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+// Получение данных пользователя из хранилища
 const authStore = useAuthStore()
 
 const form = ref({
@@ -16,6 +18,7 @@ const form = ref({
   initiator_id: null
 })
 
+// Список категорий
 const categories = ref([])
 const priorities = ref([])
 const departments = ref([])
@@ -122,6 +125,7 @@ const validateForm = () => {
   return isValid
 }
 
+// Инициализация при монтировании
 onMounted(async () => {
   // Set initiator_id from current user
   if (authStore.user?.id) {

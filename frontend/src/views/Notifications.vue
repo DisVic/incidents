@@ -1,14 +1,20 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+// Импорт хранилища авторизации
 import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
 
 const router = useRouter()
+// Получение данных пользователя из хранилища
 const authStore = useAuthStore()
+// Список уведомлений
 const notifications = ref([])
+// Флаг загрузки данных
 const loading = ref(true)
 
+// Загрузка уведомлений пользователя при монтировании
+// Инициализация при монтировании
 onMounted(async () => {
   try {
     const response = await axios.get('/api/notifications', {
@@ -22,6 +28,7 @@ onMounted(async () => {
   }
 })
 
+// Отметка уведомления как прочитанного
 const markAsRead = async (id) => {
   try {
     await axios.post(`/api/notifications/${id}/read`)
@@ -32,6 +39,7 @@ const markAsRead = async (id) => {
   }
 }
 
+// Обработка клика по уведомлению — переход к инциденту и чтение
 const handleNotificationClick = async (notif) => {
   // Mark as read
   if (!notif.is_read) {

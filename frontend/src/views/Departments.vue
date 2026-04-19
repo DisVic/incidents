@@ -2,9 +2,13 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 
+// Список отделов
 const departments = ref([])
+// Флаг загрузки данных
 const loading = ref(true)
 
+// Загрузка списка отделов при монтировании компонента
+// Инициализация при монтировании
 onMounted(async () => {
   try {
     const response = await axios.get('/api/departments', { params: { limit: 100 } })

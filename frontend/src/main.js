@@ -5,14 +5,17 @@ import router from './router'
 import { useAuthStore } from './stores/auth'
 import './assets/main.css'
 
+// Создание экземпляра приложения Vue
 const app = createApp(App)
 const pinia = createPinia()
 
-app.use(pinia)
-app.use(router)
+app.use(pinia) // Подключаем хранилище состояний Pinia
+// Подключение роутера
+app.use(router) // Подключаем роутер
 
-// Initialize auth before mounting
+// Инициализируем авторизацию до монтирования приложения, чтобы проверить токен
 const authStore = useAuthStore()
 authStore.init().finally(() => {
-  app.mount('#app')
+  // Монтирование приложения в DOM
+app.mount('#app')
 })

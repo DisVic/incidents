@@ -3,15 +3,17 @@ import { ref, onMounted, computed, watch } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
 
+// Хранилище авторизации для доступа к данным пользователя
 const authStore = useAuthStore()
 
+// Флаг загрузки данных
 const loading = ref(true)
 
-// Filters
+// Фильтр по отделу
 const departmentId = ref('')
 const departments = ref([])
 
-// Period filter
+// Период отчётности
 const period = ref('current_month')
 const periods = [
   { value: 'current_month', label: 'Текущий месяц' },
@@ -23,10 +25,10 @@ const periods = [
 const customDateFrom = ref('')
 const customDateTo = ref('')
 
-// Can filter by department (only Admin)
+// Доступ к фильтру по отделу только у админа
 const canFilterByDepartment = computed(() => authStore.isAdmin)
 
-// Compute date range from period
+// Вычисление диапазона дат на основе выбранного периода
 const dateRange = computed(() => {
   const now = new Date()
   let from, to
@@ -53,7 +55,7 @@ const dateRange = computed(() => {
         from = new Date(customDateFrom.value)
         to = new Date(customDateTo.value)
       } else {
-        // Fallback to current month
+        // По умолчанию текущий месяц
         from = new Date(now.getFullYear(), now.getMonth(), 1)
         to = new Date(now.getFullYear(), now.getMonth() + 1, 0)
       }
@@ -69,13 +71,13 @@ const dateRange = computed(() => {
   }
 })
 
-// Accordion states
+// Состояния аккордеонов для детальных блоков
 const showExecutors = ref(false)
 const showDepartments = ref(false)
 const showSLA = ref(false)
 const showOverdueHistory = ref(false)
 
-// Data
+// Основные данные дашборда
 const stats = ref(null)
 const recentIncidents = ref([])
 const slaStats = ref({ on_time: 0, overdue: 0, near_deadline: 0 })
@@ -83,15 +85,15 @@ const statusStats = ref([])
 const activityData = ref([])
 const topExecutors = ref([])
 
-// Detailed data for accordions
+// Детальные данные для аккордеонов
 const executorsData = ref([])
 const departmentsData = ref([])
 const slaData = ref({})
 
-// Overdue incidents data
+// Список просроченных инцидентов
 const overdueIncidents = ref([])
 
-// Effective department ID for filtering
+// Эффективный ID отдела для фильтрации (админ выбирает, остальные видят свой)
 const effectiveDeptId = computed(() => {
   if (authStore.isAdmin) {
     return departmentId.value
@@ -100,7 +102,7 @@ const effectiveDeptId = computed(() => {
 })
 
 onMounted(async () => {
-  // Load saved period from localStorage
+  // Загрузка сохранённого периода из localStorage
   const savedPeriod = localStorage.getItem('dashboard_period')
   if (savedPeriod) {
     period.value = savedPeriod
@@ -110,7 +112,7 @@ onMounted(async () => {
   if (savedCustomFrom) customDateFrom.value = savedCustomFrom
   if (savedCustomTo) customDateTo.value = savedCustomTo
   
-  // Load departments for filter
+  // Загрузка списка отделов для фильтра (только админ)
   if (authStore.isAdmin) {
     try {
       const deptRes = await axios.get('/api/departments')
@@ -123,13 +125,14 @@ onMounted(async () => {
   await loadDashboard()
 })
 
-// Save period to localStorage when changed
+// Сохранение выбранного периода в localStorage при изменении
 watch(period, (newVal) => {
   localStorage.setItem('dashboard_period', newVal)
   loadDashboard()
   resetAccordions()
 })
 
+// Сохранение кастомных дат при изменении
 watch([customDateFrom, customDateTo], () => {
   if (period.value === 'custom') {
     localStorage.setItem('dashboard_custom_from', customDateFrom.value)
@@ -141,11 +144,13 @@ watch([customDateFrom, customDateTo], () => {
   }
 })
 
+// Перезагрузка данных при смене отдела
 watch(departmentId, () => {
   loadDashboard()
   resetAccordions()
 })
 
+// Сброс состояния аккордеонов и их данных
 function resetAccordions() {
   showExecutors.value = false
   showDepartments.value = false
@@ -157,6 +162,7 @@ function resetAccordions() {
   overdueIncidents.value = []
 }
 
+// Загрузка всех данных дашборда одним запросом
 async function loadDashboard() {
   loading.value = true
   try {
@@ -194,7 +200,7 @@ async function loadDashboard() {
   }
 }
 
-// Load detailed data for accordion
+// Загрузка детальных данных по исполнителям для аккордеона
 async function loadExecutorsData() {
   if (executorsData.value.length > 0) return
   try {
@@ -214,6 +220,7 @@ async function loadExecutorsData() {
   }
 }
 
+// Загрузка статистики по отделам для аккордеона
 async function loadDepartmentsData() {
   if (departmentsData.value.length > 0) return
   try {
@@ -229,6 +236,7 @@ async function loadDepartmentsData() {
   }
 }
 
+// Загрузка детальной SLA-аналитики для аккордеона
 async function loadSLAData() {
   if (slaData.value.total_incidents) return
   try {
@@ -244,6 +252,7 @@ async function loadSLAData() {
   }
 }
 
+// Загрузка списка просроченных инцидентов для аккордеона
 async function loadOverdueIncidents() {
   if (overdueIncidents.value.length > 0) return
   try {
@@ -260,6 +269,7 @@ async function loadOverdueIncidents() {
   }
 }
 
+// Переключение аккордеона исполнителей
 function toggleExecutors() {
   showExecutors.value = !showExecutors.value
   if (showExecutors.value) {
@@ -269,6 +279,7 @@ function toggleExecutors() {
   }
 }
 
+// Переключение аккордеона отделов
 function toggleDepartments() {
   showDepartments.value = !showDepartments.value
   if (showDepartments.value) {
@@ -278,6 +289,7 @@ function toggleDepartments() {
   }
 }
 
+// Переключение аккордеона SLA
 function toggleSLA() {
   showSLA.value = !showSLA.value
   if (showSLA.value) {
@@ -287,6 +299,7 @@ function toggleSLA() {
   }
 }
 
+// Конфигурация карточек статистики
 const statCards = [
   { key: 'total_incidents', label: 'Всего инцидентов', color: 'blue', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
   { key: 'new_incidents', label: 'Новые', color: 'indigo', icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z' },
@@ -295,6 +308,7 @@ const statCards = [
   { key: 'overdue_incidents', label: 'Просроченные', color: 'red', icon: 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
 ]
 
+// Классы цветов фона для карточек
 const colorBgLight = {
   blue: 'bg-blue-50',
   indigo: 'bg-indigo-50',
@@ -303,6 +317,7 @@ const colorBgLight = {
   red: 'bg-red-50',
 }
 
+// Классы цветов текста для карточек
 const colorText = {
   blue: 'text-blue-600',
   indigo: 'text-indigo-600',
@@ -311,30 +326,36 @@ const colorText = {
   red: 'text-red-600',
 }
 
-// SLA percentage calculations
+// Вычисление общего количества для SLA
 const slaTotal = computed(() => slaStats.value.on_time + slaStats.value.overdue + slaStats.value.near_deadline)
+// Процент выполненных в срок
 const slaOnTimePercent = computed(() => slaTotal.value ? Math.round((slaStats.value.on_time / slaTotal.value) * 100) : 0)
+// Процент просроченных
 const slaOverduePercent = computed(() => slaTotal.value ? Math.round((slaStats.value.overdue / slaTotal.value) * 100) : 0)
+// Процент близких к дедлайну
 const slaNearPercent = computed(() => slaTotal.value ? Math.round((slaStats.value.near_deadline / slaTotal.value) * 100) : 0)
 
-// Activity chart max
+// Максимальное значение для графика активности
 const activityMax = computed(() => Math.max(...activityData.value.map(d => d.count), 1))
 
-// Top executor max for chart
+// Максимальное значение для графика лучших исполнителей
 const topExecutorMax = computed(() => Math.max(...topExecutors.value.map(e => e.resolved_count), 1))
 
+// Форматирование даты (день.месяц)
 function formatDate(dateStr) {
   if (!dateStr) return ''
   const date = new Date(dateStr)
   return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })
 }
 
+// Форматирование даты и времени
 function formatDateTime(dateStr) {
   if (!dateStr) return ''
   const date = new Date(dateStr)
   return date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+// Форматирование часов в дни и часы
 function formatHours(hours) {
   if (!hours) return '—'
   if (hours < 24) return `${hours.toFixed(1)} ч`
@@ -343,6 +364,7 @@ function formatHours(hours) {
   return `${days} д ${h} ч`
 }
 
+// Класс цвета для бейджа статуса
 function getStatusBadgeClass(statusName) {
   const statusColors = {
     'Новый': 'bg-blue-100 text-blue-800',

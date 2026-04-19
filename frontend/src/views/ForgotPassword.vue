@@ -5,11 +5,15 @@ import axios from 'axios'
 
 const router = useRouter()
 
+// Поля формы
+// Email для восстановления
 const email = ref('')
+// Сообщение об ошибке
 const error = ref('')
 const success = ref(false)
 const loading = ref(false)
 
+// Отправка запроса на сброс пароля
 const handleSubmit = async () => {
   error.value = ''
   loading.value = true

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 
 class NotificationResponse(BaseModel):
-    """Schema for notification response"""
+    """Данные уведомления для ответа клиенту"""
     id: uuid.UUID
     user_id: uuid.UUID
     incident_id: Optional[uuid.UUID] = None
@@ -23,5 +23,5 @@ class NotificationResponse(BaseModel):
 
 
 class NotificationListResponse(BaseModel):
-    """Schema for list of notifications"""
+    """Список уведомлений"""
     data: List[NotificationResponse]

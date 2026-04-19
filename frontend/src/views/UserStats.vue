@@ -6,6 +6,7 @@ import axios from 'axios'
 const route = useRoute()
 const router = useRouter()
 
+// Флаг загрузки данных
 const loading = ref(true)
 const userData = ref(null)
 const error = ref('')
@@ -65,6 +66,7 @@ onMounted(() => {
   loadStats()
 })
 
+// Отслеживание изменений
 watch([period, specificMonth, customDateFrom, customDateTo], () => {
   if (period.value === 'custom' && (!customDateFrom.value || !customDateTo.value)) {
     return // Don't reload until both dates are set
@@ -94,6 +96,7 @@ async function loadStats() {
   }
 }
 
+// Форматирование даты
 function formatDate(dateStr) {
   if (!dateStr) return '—'
   const date = new Date(dateStr)
@@ -114,6 +117,7 @@ function formatHours(hours) {
   return `${days} д ${remainingHours} ч`
 }
 
+// Возврат назад
 function goBack() {
   router.back()
 }

@@ -1,1 +1,3 @@
-from . import notifications, email
+"""
+Маршруты notification-service
+"""

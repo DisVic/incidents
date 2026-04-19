@@ -1,6 +1,4 @@
-"""
-Celery tasks for SLA monitoring and escalation
-"""
+"""Фоновые задачи Celery для SLA и уведомлений"""
 import logging
 from datetime import datetime
 from celery import shared_task
@@ -21,14 +19,14 @@ logger = logging.getLogger(__name__)
 
 
 async def get_user_notification_settings(db, user_id: UUID) -> dict:
-    """Get notification settings for a user, with defaults if not set"""
+    """Получить настройки уведомлений пользователя или вернуть значения по умолчанию"""
     result = await db.execute(
         select(NotificationSettings).where(NotificationSettings.user_id == user_id)
     )
     ns = result.scalar_one_or_none()
     
     if not ns:
-        # Return defaults
+        # Возвращаем настройки по умолчанию
         return {
             "incident_created": {"internal": True, "email": False},
             "assigned_executor": {"internal": True, "email": True},
@@ -54,7 +52,7 @@ async def get_user_notification_settings(db, user_id: UUID) -> dict:
 
 async def send_internal_notification(db, user_id: UUID, incident_id: UUID, 
                                       type: str, title: str, message: str):
-    """Create an internal notification in the database"""
+    """Создать внутреннее уведомление в базе данных"""
     notification = Notification(
         user_id=user_id,
         incident_id=incident_id,
@@ -67,13 +65,13 @@ async def send_internal_notification(db, user_id: UUID, incident_id: UUID,
 
 async def send_email_notification(user: User, incident: Incident, 
                                    email_type: str, extra: dict = None):
-    """Send email notification using HTML templates"""
+    """Отправить email через сервис уведомлений"""
     import httpx
     
     if not user.email:
         return
     
-    # Prepare incident data for template
+    # Собираем данные инцидента для шаблона
     incident_data = {
         "id": str(incident.id),
         "title": incident.title,
@@ -111,32 +109,29 @@ async def send_notification_with_settings(db, user: User, incident: Incident,
                                            event_type: str, email_type: str,
                                            title: str, message: str,
                                            extra: dict = None):
-    """Send notification respecting user settings"""
+    """Отправить уведомление с учётом настроек пользователя"""
     user_settings = await get_user_notification_settings(db, user.id)
     event_settings = user_settings.get(event_type, {"internal": True, "email": True})
     
-    # Internal notification
+    # Внутреннее уведомление
     if event_settings.get("internal", True):
         await send_internal_notification(db, user.id, incident.id, event_type, title, message)
     
-    # Email notification
+    # Email
     if event_settings.get("email", True):
         await send_email_notification(user, incident, email_type, extra)
 
 
 @celery_app.task(name="shared.tasks.check_sla_overdue")
 def check_sla_overdue():
-    """
-    Check all active incidents for SLA overdue.
-    Runs every 5 minutes.
-    """
+    """Проверка активных инцидентов на просрочку SLA. Запускается каждые 5 минут."""
     import asyncio
     return asyncio.run(_check_sla_overdue_async())
 
 
 async def _check_sla_overdue_async():
     async with async_session() as db:
-        # Get active statuses (Новый, Назначен, В работе)
+        # Активные статусы
         active_status_names = ["Новый", "Назначен", "В работе"]
         status_result = await db.execute(
             select(Status).where(Status.name.in_(active_status_names))
@@ -144,7 +139,7 @@ async def _check_sla_overdue_async():
         active_statuses = status_result.scalars().all()
         active_status_ids = [s.id for s in active_statuses]
         
-        # Find incidents that are overdue but not marked
+        # Ищем просроченные инциденты
         now = datetime.utcnow()
         result = await db.execute(
             select(Incident)
@@ -169,23 +164,23 @@ async def _check_sla_overdue_async():
         logger.info(f"SLA Monitor: Found {len(overdue_incidents)} overdue incidents")
         
         for incident in overdue_incidents:
-            # Mark as overdue
+            # Помечаем как просроченный
             incident.overdue = True
             
-            # Calculate overdue hours
+            # Считаем время просрочки
             overdue_hours = (now - incident.sla_deadline).total_seconds() / 3600
             
-            # Add history entry
+            # Добавляем запись в историю
             history = IncidentHistory(
                 incident_id=incident.id,
-                user_id=None,  # System
+                user_id=None,  # Система
                 previous_status_id=incident.status_id,
                 new_status_id=incident.status_id,
                 comment="Автоматическая просрочка по SLA"
             )
             db.add(history)
             
-            # Send notifications
+            # Уведомляем пользователей
             await _send_overdue_notifications(db, incident, overdue_hours)
         
         await db.commit()
@@ -193,10 +188,10 @@ async def _check_sla_overdue_async():
 
 
 async def _send_overdue_notifications(db, incident, overdue_hours: float):
-    """Send overdue notifications to relevant users"""
+    """Отправить уведомления о просрочке ответственным пользователям"""
     recipients = []
     
-    # Get all Admins
+    # Получаем всех Admin
     admin_role_result = await db.execute(
         select(Role).where(Role.name == "Admin")
     )

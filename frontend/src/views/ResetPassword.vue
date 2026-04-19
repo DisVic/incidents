@@ -6,13 +6,18 @@ import axios from 'axios'
 const router = useRouter()
 const route = useRoute()
 
+// Токен из URL и поля формы
 const token = ref('')
+// Новый пароль
 const newPassword = ref('')
+// Подтверждение пароля
 const confirmPassword = ref('')
+// Сообщение об ошибке
 const error = ref('')
 const success = ref(false)
 const loading = ref(false)
 
+// Получение токена из query-параметров при загрузке
 onMounted(() => {
   token.value = route.query.token || ''
   if (!token.value) {
@@ -20,6 +25,7 @@ onMounted(() => {
   }
 })
 
+// Валидация и отправка нового пароля
 const handleSubmit = async () => {
   error.value = ''
   

@@ -71,6 +71,7 @@ def translate_validation_error(error: dict) -> str:
     
     return msg
 
+# Инициализация приложения FastAPI
 app = FastAPI(
     title="User Service",
     version="1.0.0",
@@ -78,6 +79,7 @@ app = FastAPI(
     root_path="/user",
 )
 
+# Настройка CORS для всех источников
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -111,6 +113,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+# Подключение роутеров
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(users.router, prefix="/users", tags=["Users"])
 app.include_router(departments.router, prefix="/departments", tags=["Departments"])
@@ -118,9 +121,11 @@ app.include_router(departments.router, prefix="/departments", tags=["Departments
 
 @app.get("/health")
 async def health():
+    """Проверка здоровья сервиса"""
     return {"service": "user-service", "status": "healthy"}
 
 
 if __name__ == "__main__":
     import uvicorn
+    # Запуск сервера разработки
     uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)

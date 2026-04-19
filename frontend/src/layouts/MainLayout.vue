@@ -6,13 +6,15 @@ import axios from 'axios'
 
 const router = useRouter()
 const route = useRoute()
+// Хранилище авторизации
 const authStore = useAuthStore()
 
-const sidebarOpen = ref(true)
-const unreadCount = ref(0)
-let pollingInterval = null
+// Состояние бокового меню
+const sidebarOpen = ref(true) // Состояние боковой панели (развернута/свернута)
+const unreadCount = ref(0) // Количество непрочитанных уведомлений
+let pollingInterval = null // Таймер опроса уведомлений
 
-// Generate notification sound using Web Audio API
+// Воспроизведение звука уведомления через Web Audio API
 const playNotificationSound = () => {
   try {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)()
@@ -22,9 +24,10 @@ const playNotificationSound = () => {
     oscillator.connect(gainNode)
     gainNode.connect(audioContext.destination)
     
-    oscillator.frequency.value = 800
-    oscillator.type = 'sine'
+    oscillator.frequency.value = 800 // Частота звука (Гц)
+    oscillator.type = 'sine' // Тип волны
     
+    // Плавное затухание звука
     gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
     gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
     
@@ -35,6 +38,7 @@ const playNotificationSound = () => {
   }
 }
 
+// Загрузка количества непрочитанных уведомлений
 const fetchUnreadCount = async () => {
   if (!authStore.user?.id) return
   
@@ -47,7 +51,7 @@ const fetchUnreadCount = async () => {
     })
     const newCount = response.data.length
     
-    // Play sound if new notifications appeared (count increased)
+    // Звук при появлении новых уведомлений
     if (newCount > unreadCount.value && unreadCount.value >= 0) {
       playNotificationSound()
     }
@@ -60,16 +64,18 @@ const fetchUnreadCount = async () => {
 
 onMounted(() => {
   fetchUnreadCount()
-  // Poll every 5 seconds for real-time updates
+  // Опрос каждые 5 секунд для обновления уведомлений
   pollingInterval = setInterval(fetchUnreadCount, 5000)
 })
 
 onUnmounted(() => {
+  // Очищаем таймер при уничтожении компонента
   if (pollingInterval) {
     clearInterval(pollingInterval)
   }
 })
 
+// Формирование меню в зависимости от роли пользователя
 const menuItems = computed(() => {
   const items = []
   
@@ -91,6 +97,7 @@ const menuItems = computed(() => {
   return items
 })
 
+// Выход из системы
 const handleLogout = () => {
   authStore.logout()
   router.push('/login')
@@ -99,20 +106,21 @@ const handleLogout = () => {
 
 <template>
   <div class="min-h-screen flex bg-gray-100">
-    <!-- Sidebar -->
+    <!-- Боковая панель -->
     <aside 
       :class="[
         'fixed inset-y-0 left-0 z-50 bg-slate-800 text-white transition-all duration-300',
         sidebarOpen ? 'w-64' : 'w-16'
       ]"
     >
-      <!-- Logo -->
+      <!-- Логотип -->
       <div class="h-16 flex items-center justify-between px-4 border-b border-slate-700">
         <span v-if="sidebarOpen" class="text-xl font-bold">IMS</span>
         <span v-else class="text-xl font-bold">I</span>
         <button 
           @click="sidebarOpen = !sidebarOpen"
           class="p-2 rounded-lg hover:bg-slate-700"
+          title="Свернуть/развернуть меню"
         >
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
@@ -120,7 +128,7 @@ const handleLogout = () => {
         </button>
       </div>
       
-      <!-- Navigation -->
+      <!-- Навигация -->
       <nav class="mt-4 px-2">
         <router-link
           v-for="item in menuItems"
@@ -130,11 +138,12 @@ const handleLogout = () => {
           exact-active-class="bg-primary-600 text-white"
         >
           <span class="w-5 h-5 flex items-center justify-center relative">
-            <!-- Bell icon with badge -->
+            <!-- Иконка колокольчика с бейджем -->
             <template v-if="item.icon === 'bell'">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
               </svg>
+              <!-- Бейдж с количеством непрочитанных -->
               <span 
                 v-if="unreadCount > 0" 
                 class="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1"
@@ -173,9 +182,10 @@ const handleLogout = () => {
         </router-link>
       </nav>
       
-      <!-- User info -->
+      <!-- Информация о пользователе -->
       <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-700">
         <div class="flex items-center gap-3">
+          <!-- Аватар или инициалы -->
           <div class="w-10 h-10 rounded-full bg-primary-500 flex items-center justify-center font-bold overflow-hidden">
             <img 
               v-if="authStore.user?.avatar" 
@@ -202,9 +212,9 @@ const handleLogout = () => {
       </div>
     </aside>
     
-    <!-- Main content -->
+    <!-- Основной контент -->
     <main :class="['flex-1 transition-all duration-300', sidebarOpen ? 'ml-64' : 'ml-16']">
-      <!-- Header -->
+      <!-- Шапка -->
       <div class="sticky top-0 z-40 bg-white border-b border-slate-200 px-6 py-3">
         <div class="flex items-center justify-between">
           <h1 class="text-lg font-semibold text-slate-800">
@@ -213,6 +223,7 @@ const handleLogout = () => {
         </div>
       </div>
       
+      <!-- Область просмотра текущей страницы -->
       <div class="p-6">
         <router-view />
       </div>

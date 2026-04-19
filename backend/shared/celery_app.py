@@ -1,48 +1,44 @@
-"""
-Celery configuration for background tasks
-"""
+"""Настройка Celery для фоновых задач"""
 from celery import Celery
 from celery.schedules import crontab
 
 from shared.config import settings
 
+
+# Основной экземпляр Celery для всех фоновых задач
 celery_app = Celery(
     "incident_management",
-    broker=settings.REDIS_URL,
-    backend=settings.REDIS_URL,
-    include=["shared.tasks"]
+    broker=settings.REDIS_URL,  # Брокер сообщений (Redis)
+    backend=settings.REDIS_URL,  # Хранение результатов задач
+    include=["shared.tasks"]  # Модуль с задачами
 )
 
-# Celery configuration
+# Конфигурация Celery
 celery_app.conf.update(
-    # Task settings
-    task_serializer="json",
-    accept_content=["json"],
-    result_serializer="json",
-    timezone="Europe/Moscow",
-    enable_utc=True,
+    task_serializer="json",  # Сериализация задач в JSON
+    accept_content=["json"],  # Принимаем только JSON
+    result_serializer="json",  # Результаты в JSON
+    timezone="Europe/Moscow",  # Часовой пояс
+    enable_utc=True,  # Использовать UTC
     
-    # Result backend settings
-    result_expires=3600,  # 1 hour
+    result_expires=3600,  # Результаты хранятся 1 час
     
-    # Task routing
+    # Распределение задач по очередям
     task_routes={
         "shared.tasks.check_sla_overdue": {"queue": "sla"},
         "shared.tasks.check_escalation": {"queue": "sla"},
         "shared.tasks.send_notification": {"queue": "notifications"},
     },
     
-    # Beat schedule for periodic tasks
+    # Периодические задачи (запускаются каждые 5 минут)
     beat_schedule={
-        # Check SLA overdue every 5 minutes
         "check-sla-overdue": {
             "task": "shared.tasks.check_sla_overdue",
-            "schedule": 300.0,  # 5 minutes
+            "schedule": 300.0,
         },
-        # Check escalation every 5 minutes
         "check-escalation": {
             "task": "shared.tasks.check_escalation",
-            "schedule": 300.0,  # 5 minutes
+            "schedule": 300.0,
         },
     },
 )

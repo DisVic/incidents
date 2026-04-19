@@ -1,50 +1,52 @@
-"""
-Shared configuration for all microservices
-"""
+"""Конфигурация для всех микросервисов"""
 from pydantic_settings import BaseSettings
 from typing import Optional
 
 
 class Settings(BaseSettings):
-    # App
+    """Настройки приложения из переменных окружения"""
+    
+    # Основные настройки
     APP_NAME: str = "Incident Management System"
     DEBUG: bool = True
     
-    # Database
+    # Подключение к базе данных
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/incidents_db"
     
-    # Redis
+    # Redis для Celery
     REDIS_URL: str = "redis://localhost:6379/0"
     
-    # JWT
+    # JWT для аутентификации
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
-    # SLA defaults
+    # Рабочее время (для расчёта SLA)
     WORK_HOUR_START: int = 9
     WORK_HOUR_END: int = 18
     WORK_DAYS: list[int] = [0, 1, 2, 3, 4]
     
-    # Email (SMTP)
+    # SMTP для email-уведомлений
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: Optional[int] = None
     SMTP_USER: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
     SMTP_FROM: Optional[str] = None
     
-
-    
-    # Frontend URL (for email links)
+    # URL фронтенда
     FRONTEND_URL: str = "http://localhost:3000"
     
-    # File uploads
+    # Загрузка файлов
     UPLOAD_DIR: str = "uploads"
     MAX_FILE_SIZE: int = 10 * 1024 * 1024
-    ALLOWED_EXTENSIONS: list[str] = ["jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "xls", "xlsx", "txt", "log"]
+    ALLOWED_EXTENSIONS: list[str] = [
+        "jpg", "jpeg", "png", "gif",
+        "pdf", "doc", "docx", "xls", "xlsx",
+        "txt", "log"
+    ]
     
-    # Service URLs (for inter-service communication)
+    # Адреса микросервисов
     USER_SERVICE_URL: str = "http://user-service:8001"
     INCIDENT_SERVICE_URL: str = "http://incident-service:8002"
     SLA_SERVICE_URL: str = "http://sla-service:8003"
