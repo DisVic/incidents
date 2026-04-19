@@ -1,5 +1,14 @@
 """
-User management routes
+API управления пользователями — CRUD, блокировка, аватары.
+
+Endpoint'ы:
+- GET /users — список пользователей (пагинация)
+- GET /users/{id} — данные пользователя
+- POST /users — создание пользователя
+- PUT /users/{id} — обновление (включая блокировку)
+- DELETE /users/{id} — удаление (нельзя последнего Admin)
+- PUT /users/{id}/password — смена пароля администратором
+- POST /users/{id}/avatar — загрузка аватара (Base64)
 """
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,17 +23,22 @@ from schemas import UserCreate, UserUpdate, UserResponse, PasswordChange
 
 router = APIRouter()
 
-# Incident service URL (internal Docker network)
+# URL incident-service для межсервисных вызовов
 INCIDENT_SERVICE_URL = "http://incident-service:8002"
 
 
 async def reset_executor_incidents(user_id: str):
-    """Reset all incidents assigned to user back to 'New' status"""
+    """
+    Сбрасывает назначенные инциденты пользователя при блокировке/удалении.
+    
+    Вызывает endpoint incident-service, который переводит инциденты
+    в статус "Новый" и снимает исполнителя.
+    """
     async with httpx.AsyncClient() as client:
         try:
             await client.post(f"{INCIDENT_SERVICE_URL}/incidents/reset-executor/{user_id}")
         except Exception as e:
-            # Log error but don't fail the operation
+            # Логируем ошибку, но не прерываем операцию
             print(f"Failed to reset executor incidents: {e}")
 
 
@@ -33,6 +47,16 @@ async def list_users(
     page: int = 1, limit: int = 20,
     db: AsyncSession = Depends(get_db)
 ):
+    """
+    Список пользователей с пагинацией.
+    
+    Используется в админ-панели для управления пользователями.
+    Возвращает данные с ролью и отделом, без password_hash.
+    
+    Query params:
+    - page: номер страницы (default: 1)
+    - limit: количество на странице (default: 20)
+    """
     offset = (page - 1) * limit
     result = await db.execute(
         select(User)
@@ -44,7 +68,7 @@ async def list_users(
     
     total = await db.execute(select(func.count()).select_from(User))
     
-    # Exclude password_hash from response
+    # Исключаем password_hash из ответа
     users_data = [
         {
             "id": str(u.id),
@@ -67,6 +91,7 @@ async def list_users(
 
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(user_id: str, db: AsyncSession = Depends(get_db)):
+    """Получение данных пользователя по ID."""
     result = await db.execute(
         select(User)
         .options(selectinload(User.role), selectinload(User.department))
@@ -92,6 +117,17 @@ async def get_user(user_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=UserResponse, status_code=201)
 async def create_user(data: UserCreate, db: AsyncSession = Depends(get_db)):
+    """
+    Создание нового пользователя.
+    
+    - Хеширует пароль перед сохранением
+    - Создаёт настройки уведомлений (все включены)
+    - Проверяет уникальность email
+    
+    Raises:
+        HTTPException 400: Email уже существует
+    """
+    # Проверка уникальности email
     existing = await db.execute(select(User).where(User.email == data.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email exists")
@@ -104,9 +140,9 @@ async def create_user(data: UserCreate, db: AsyncSession = Depends(get_db)):
         department_id=data.department_id
     )
     db.add(user)
-    await db.flush()  # Get user.id before commit
+    await db.flush()  # Получаем user.id до коммита
     
-    # Create notification settings with all enabled
+    # Создаём настройки уведомлений
     all_enabled = {"internal": True, "email": True}
     notif_settings = NotificationSettings(
         user_id=user.id,
@@ -122,7 +158,7 @@ async def create_user(data: UserCreate, db: AsyncSession = Depends(get_db)):
     db.add(notif_settings)
     await db.commit()
     
-    # Reload with relationships
+    # Загружаем с relationships
     result = await db.execute(
         select(User)
         .options(selectinload(User.role), selectinload(User.department))
@@ -147,6 +183,12 @@ async def create_user(data: UserCreate, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{user_id}", response_model=UserResponse)
 async def update_user(user_id: str, data: UserUpdate, db: AsyncSession = Depends(get_db)):
+    """
+    Обновление данных пользователя.
+    
+    - При блокировке (is_active=False) сбрасывает назначенные инциденты
+    - Обновляет только переданные поля
+    """
     result = await db.execute(
         select(User)
         .options(selectinload(User.role), selectinload(User.department))
@@ -156,7 +198,7 @@ async def update_user(user_id: str, data: UserUpdate, db: AsyncSession = Depends
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Check if user is being blocked
+    # Проверяем, блокируется ли пользователь
     was_active = user.is_active
     will_be_blocked = data.is_active == False and was_active == True
     
@@ -165,15 +207,15 @@ async def update_user(user_id: str, data: UserUpdate, db: AsyncSession = Depends
     
     await db.commit()
     
-    # Reset executor incidents if user is being blocked
+    # Сбрасываем инциденты при блокировке
     if will_be_blocked:
         await reset_executor_incidents(user_id)
     
-    # Reload with relationships
+    # Перезагружаем с relationships
     result = await db.execute(
         select(User)
         .options(selectinload(User.role), selectinload(User.department))
-        .where(User.id == user.id)
+        .where(User.id == user_id)
     )
     user = result.scalar_one()
     
@@ -194,7 +236,12 @@ async def update_user(user_id: str, data: UserUpdate, db: AsyncSession = Depends
 
 @router.delete("/{user_id}")
 async def delete_user(user_id: str, db: AsyncSession = Depends(get_db)):
-    """Delete user (admin only)"""
+    """
+    Удаление пользователя.
+    
+    - Проверяет, что не последний Admin
+    - Сбрасывает назначенные инциденты
+    """
     result = await db.execute(
         select(User).options(selectinload(User.role)).where(User.id == user_id)
     )
@@ -203,7 +250,7 @@ async def delete_user(user_id: str, db: AsyncSession = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    # Check if it's the last admin
+    # Нельзя удалить последнего администратора
     if user.role and user.role.name == "Admin":
         admin_count = await db.execute(
             select(func.count()).select_from(User).join(Role).where(Role.name == "Admin", User.is_active == True)
@@ -211,7 +258,7 @@ async def delete_user(user_id: str, db: AsyncSession = Depends(get_db)):
         if admin_count.scalar() <= 1:
             raise HTTPException(status_code=400, detail="Нельзя удалить последнего администратора")
     
-    # Reset executor incidents before deletion
+    # Сбрасываем инциденты перед удалением
     await reset_executor_incidents(user_id)
     
     await db.delete(user)
@@ -222,26 +269,31 @@ async def delete_user(user_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{user_id}/password")
 async def change_password(user_id: str, data: PasswordChange, db: AsyncSession = Depends(get_db)):
-    """Change user password"""
+    """
+    Смена пароля пользователя (администратором).
+    
+    - Проверяет текущий пароль
+    - Отправляет уведомление о смене пароля
+    """
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    # Verify current password
+    # Проверяем текущий пароль
     if not verify_password(data.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Неверный текущий пароль")
     
-    # Validate new password
+    # Проверяем длину нового пароля
     if len(data.new_password) < 6:
         raise HTTPException(status_code=400, detail="Пароль должен быть не менее 6 символов")
     
-    # Update password
+    # Обновляем пароль
     user.password_hash = hash_password(data.new_password)
     await db.commit()
     
-    # Send notification email about password change
+    # Отправляем уведомление
     from shared.tasks import send_notification
     send_notification.delay(
         str(user.id),
@@ -255,12 +307,18 @@ async def change_password(user_id: str, data: PasswordChange, db: AsyncSession =
 
 
 class AvatarUpload(BaseModel):
-    avatar: str = ""  # Base64 encoded image or empty string to remove
+    """Данные для загрузки аватара (Base64 или пустая строка для удаления)."""
+    avatar: str = ""  # Base64 изображение или пустая строка для удаления
 
 
 @router.post("/{user_id}/avatar")
 async def upload_avatar(user_id: str, data: AvatarUpload, db: AsyncSession = Depends(get_db)):
-    """Upload user avatar (Base64) or remove it (pass empty string)"""
+    """
+    Загрузка аватара пользователя.
+    
+    - Принимает Base64 изображение (макс. 500KB)
+    - Пустая строка удаляет аватар
+    """
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     
@@ -269,17 +327,15 @@ async def upload_avatar(user_id: str, data: AvatarUpload, db: AsyncSession = Dep
     
     avatar_data = data.avatar
     
-    # Validate base64 image (basic check) - only if not empty
+    # Проверка размера (Base64 ~33% больше бинарных данных)
     if avatar_data:
-        # Check if it's a valid data URL
         if avatar_data.startswith('data:image/'):
-            # Limit size to ~500KB (base64 is ~33% larger than binary)
-            if len(avatar_data) > 700000:
+            if len(avatar_data) > 700000:  # ~500KB в base64
                 raise HTTPException(status_code=400, detail="Изображение слишком большое (максимум 500KB)")
         elif len(avatar_data) > 500000:
             raise HTTPException(status_code=400, detail="Изображение слишком большое")
     
-    # Store None if empty string, otherwise store the base64 data
+    # Сохраняем None если пустая строка
     user.avatar = avatar_data if avatar_data else None
     await db.commit()
     

@@ -1,4 +1,7 @@
 <script setup>
+/**
+ * Страница сброса пароля: отправка email для восстановления.
+ */
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
@@ -10,6 +13,9 @@ const error = ref('')
 const success = ref(false)
 const loading = ref(false)
 
+/**
+ * Отправка запроса на сброс пароля.
+ */
 const handleSubmit = async () => {
   error.value = ''
   loading.value = true
@@ -29,17 +35,17 @@ const handleSubmit = async () => {
 <template>
   <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
     <div class="max-w-md w-full mx-4">
-      <!-- Logo -->
+      <!-- Логотип -->
       <div class="text-center mb-8">
         <h1 class="text-4xl font-bold text-white mb-2">IMS</h1>
         <p class="text-slate-400">Система управления инцидентами</p>
       </div>
       
-      <!-- Form -->
+      <!-- Форма -->
       <div class="bg-white rounded-2xl shadow-2xl p-8">
         <h2 class="text-2xl font-bold text-slate-800 mb-6">Сброс пароля</h2>
         
-        <!-- Success message -->
+        <!-- Сообщение об успехе -->
         <div v-if="success" class="text-center">
           <div class="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
             <svg class="w-12 h-12 mx-auto mb-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -53,9 +59,9 @@ const handleSubmit = async () => {
           </router-link>
         </div>
         
-        <!-- Form -->
+        <!-- Форма -->
         <form v-else @submit.prevent="handleSubmit">
-          <!-- Error message -->
+          <!-- Сообщение об ошибке -->
           <div v-if="error" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
             {{ error }}
           </div>
@@ -76,7 +82,7 @@ const handleSubmit = async () => {
             />
           </div>
           
-          <!-- Submit -->
+          <!-- Кнопка отправки -->
           <button
             type="submit"
             :disabled="loading"
@@ -86,7 +92,7 @@ const handleSubmit = async () => {
             <span v-else>Отправить</span>
           </button>
           
-          <!-- Back to login -->
+          <!-- Назад ко входу -->
           <div class="mt-4 text-center">
             <router-link to="/login" class="text-sm text-slate-600 hover:text-slate-800">
               ← Вернуться к входу

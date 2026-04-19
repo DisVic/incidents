@@ -1,4 +1,7 @@
 <script setup>
+/**
+ * Страница установки нового пароля по токену из email.
+ */
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
@@ -13,6 +16,9 @@ const error = ref('')
 const success = ref(false)
 const loading = ref(false)
 
+/**
+ * Получение токена из URL при загрузке страницы.
+ */
 onMounted(() => {
   token.value = route.query.token || ''
   if (!token.value) {
@@ -20,6 +26,9 @@ onMounted(() => {
   }
 })
 
+/**
+ * Сброс пароля с валидацией.
+ */
 const handleSubmit = async () => {
   error.value = ''
   
@@ -53,17 +62,17 @@ const handleSubmit = async () => {
 <template>
   <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
     <div class="max-w-md w-full mx-4">
-      <!-- Logo -->
+      <!-- Логотип -->
       <div class="text-center mb-8">
         <h1 class="text-4xl font-bold text-white mb-2">IMS</h1>
         <p class="text-slate-400">Система управления инцидентами</p>
       </div>
       
-      <!-- Form -->
+      <!-- Форма -->
       <div class="bg-white rounded-2xl shadow-2xl p-8">
         <h2 class="text-2xl font-bold text-slate-800 mb-6">Новый пароль</h2>
         
-        <!-- Success message -->
+        <!-- Сообщение об успехе -->
         <div v-if="success" class="text-center">
           <div class="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
             <svg class="w-12 h-12 mx-auto mb-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -77,14 +86,14 @@ const handleSubmit = async () => {
           </router-link>
         </div>
         
-        <!-- Form -->
+        <!-- Форма -->
         <form v-else @submit.prevent="handleSubmit">
-          <!-- Error message -->
+          <!-- Сообщение об ошибке -->
           <div v-if="error" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
             {{ error }}
           </div>
           
-          <!-- New Password -->
+          <!-- Новый пароль -->
           <div class="mb-4">
             <label class="block text-sm font-medium text-slate-700 mb-2">Новый пароль</label>
             <input
@@ -96,7 +105,7 @@ const handleSubmit = async () => {
             />
           </div>
           
-          <!-- Confirm Password -->
+          <!-- Подтверждение пароля -->
           <div class="mb-6">
             <label class="block text-sm font-medium text-slate-700 mb-2">Подтверждение пароля</label>
             <input
@@ -108,7 +117,7 @@ const handleSubmit = async () => {
             />
           </div>
           
-          <!-- Submit -->
+          <!-- Кнопка сохранения -->
           <button
             type="submit"
             :disabled="loading"

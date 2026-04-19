@@ -1,5 +1,17 @@
 """
-Email notifications via SMTP with HTML templates
+Email-уведомления через SMTP с HTML-шаблонами.
+
+Endpoint'ы:
+- POST /email/send — отправка простого/HTML письма
+- POST /email/send-templated — отправка по шаблону (инциденты, уведомления)
+- POST /email/send-bulk — массовая рассылка
+- POST /email/send-bulk-templated — массовая рассылка по шаблону
+
+Типы писем (EmailType):
+- incident_created, incident_assigned, incident_resolved, incident_closed
+- sla_overdue, escalation_level1, escalation_level2
+- status_changed, new_comment, priority_changed
+- password_changed
 """
 from fastapi import APIRouter
 from pydantic import BaseModel, EmailStr
@@ -10,7 +22,7 @@ from shared import settings
 
 router = APIRouter()
 
-# Import templates
+# Импорт HTML-шаблонов писем
 try:
     from templates import (
         template_incident_created,
@@ -31,6 +43,7 @@ except ImportError:
 
 
 class EmailType(str, Enum):
+    """Типы email-уведомлений."""
     INCIDENT_CREATED = "incident_created"
     INCIDENT_ASSIGNED = "incident_assigned"
     INCIDENT_RESOLVED = "incident_resolved"
@@ -46,6 +59,7 @@ class EmailType(str, Enum):
 
 
 class EmailRequest(BaseModel):
+    """Запрос на отправку простого письма."""
     to: EmailStr
     subject: str
     body: str
@@ -53,15 +67,27 @@ class EmailRequest(BaseModel):
 
 
 class TemplatedEmailRequest(BaseModel):
+    """Запрос на отправку письма по шаблону."""
     to: EmailStr
     email_type: EmailType
-    incident: Dict[str, Any]
-    extra: Optional[Dict[str, Any]] = None
-    base_url: Optional[str] = None
+    incident: Dict[str, Any]  # Данные инцидента для шаблона
+    extra: Optional[Dict[str, Any]] = None  # Дополнительные данные
+    base_url: Optional[str] = None  # URL фронтенда для ссылок
 
 
 def send_smtp_email(to: str, subject: str, body: str, html_body: Optional[str] = None) -> dict:
-    """Send email via SMTP"""
+    """
+    Отправка email через SMTP.
+    
+    Args:
+        to: Email получателя
+        subject: Тема письма
+        body: Текст письма (plain text)
+        html_body: HTML-версия письма (опционально)
+    
+    Returns:
+        dict: {"success": True} или {"error": "..."}
+    """
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -69,15 +95,16 @@ def send_smtp_email(to: str, subject: str, body: str, html_body: Optional[str] =
     if not settings.SMTP_HOST:
         return {"error": "SMTP not configured"}
     
+    # Создаём MIME-сообщение
     msg = MIMEMultipart("alternative")
     msg["From"] = settings.SMTP_FROM or settings.SMTP_USER
     msg["To"] = to
     msg["Subject"] = f"[IMS] {subject}"
     
-    # Plain text version
+    # Прикрепляем plain text версию
     msg.attach(MIMEText(body, "plain", "utf-8"))
     
-    # HTML version (if provided)
+    # Прикрепляем HTML версию (если есть)
     if html_body:
         msg.attach(MIMEText(html_body, "html", "utf-8"))
     
@@ -93,7 +120,7 @@ def send_smtp_email(to: str, subject: str, body: str, html_body: Optional[str] =
 
 @router.post("/send")
 async def send_email(data: EmailRequest):
-    """Send plain or HTML email"""
+    """Отправка простого или HTML письма."""
     result = send_smtp_email(
         to=data.to,
         subject=data.subject,
@@ -105,7 +132,11 @@ async def send_email(data: EmailRequest):
 
 @router.post("/send-templated")
 async def send_templated_email(data: TemplatedEmailRequest):
-    """Send email using pre-defined template"""
+    """
+    Отправка письма по предустановленному шаблону.
+    
+    Генерирует HTML из шаблона на основе типа события и данных инцидента.
+    """
     if not TEMPLATES_AVAILABLE:
         return {"error": "Templates not available"}
     
@@ -113,7 +144,7 @@ async def send_templated_email(data: TemplatedEmailRequest):
     extra = data.extra or {}
     incident = data.incident
     
-    # Generate HTML from template
+    # Генерируем HTML из шаблона
     html_body = ""
     subject = ""
     
@@ -141,7 +172,7 @@ async def send_templated_email(data: TemplatedEmailRequest):
     elif data.email_type == EmailType.ESCALATION_LEVEL1:
         percent = extra.get("percent_used", 80)
         html_body = template_escalation_level1(incident, percent, base_url)
-        subject = f"[ЭСКАЛАЦИЯ] Инцидент #{incident.get('id', 'N/A')[:8]}"
+        subject = f"[Эскалация] Инцидент #{incident.get('id', 'N/A')[:8]}"
         
     elif data.email_type == EmailType.ESCALATION_LEVEL2:
         overdue_hours = extra.get("overdue_hours", 0)
@@ -175,7 +206,7 @@ async def send_templated_email(data: TemplatedEmailRequest):
     else:
         return {"error": f"Unknown email type: {data.email_type}"}
     
-    # Plain text fallback (simple version)
+    # Plain text версия (fallback)
     plain_body = f"Инцидент: {incident.get('title', 'N/A')}\nОткройте: {base_url}/incidents/{incident.get('id')}"
     
     result = send_smtp_email(
@@ -190,7 +221,7 @@ async def send_templated_email(data: TemplatedEmailRequest):
 
 @router.post("/send-bulk")
 async def send_bulk_email(recipients: list[EmailStr], subject: str, body: str, html_body: Optional[str] = None):
-    """Send email to multiple recipients"""
+    """Массовая рассылка письма нескольким получателям."""
     results = []
     for email in recipients:
         result = send_smtp_email(
@@ -205,7 +236,7 @@ async def send_bulk_email(recipients: list[EmailStr], subject: str, body: str, h
 
 @router.post("/send-bulk-templated")
 async def send_bulk_templated_email(recipients: list[EmailStr], email_type: EmailType, incident: Dict[str, Any], extra: Optional[Dict[str, Any]] = None, base_url: Optional[str] = None):
-    """Send templated email to multiple recipients"""
+    """Массовая рассылка письма по шаблону."""
     results = []
     for email in recipients:
         result = await send_templated_email(TemplatedEmailRequest(

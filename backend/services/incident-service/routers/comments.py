@@ -1,5 +1,14 @@
 """
-Comments and attachments routes
+API комментариев и вложений к инцидентам.
+
+Endpoint'ы:
+- GET /incidents/{id}/comments — список комментариев
+- POST /incidents/{id}/comments — добавить комментарий
+- DELETE /comments/{id} — удалить комментарий
+- GET /incidents/{id}/attachments — список вложений
+- POST /incidents/{id}/attachments — загрузить файл
+- GET /attachments/{id}/download — скачать файл
+- DELETE /attachments/{id} — удалить файл
 """
 import uuid
 from datetime import datetime
@@ -16,11 +25,13 @@ router = APIRouter()
 
 
 class CommentCreate(BaseModel):
+    """Данные для создания комментария."""
     content: str
-    author_id: str = None  # Will be set from auth in future
+    author_id: str = None  # Будет установлен из аутентификации
 
 
 def comment_to_dict(comment: Comment) -> dict:
+    """Конвертация ORM-объекта комментария в словарь."""
     return {
         "id": str(comment.id),
         "incident_id": str(comment.incident_id),
@@ -34,6 +45,7 @@ def comment_to_dict(comment: Comment) -> dict:
 
 @router.get("/incidents/{incident_id}/comments")
 async def list_comments(incident_id: str, db: AsyncSession = Depends(get_db)):
+    """Список комментариев инцидента (от старых к новым)."""
     result = await db.execute(
         select(Comment)
         .options(selectinload(Comment.author))
@@ -50,7 +62,12 @@ async def create_comment(
     data: CommentCreate,
     db: AsyncSession = Depends(get_db)
 ):
-    author_id = data.author_id or "40000000-0000-0000-0000-000000000001"  # Default to admin
+    """
+    Добавить комментарий к инциденту.
+    
+    Отправляет уведомление всем участникам инцидента.
+    """
+    author_id = data.author_id or "40000000-0000-0000-0000-000000000001"  # По умолчанию admin
     
     comment = Comment(
         incident_id=uuid.UUID(incident_id),
@@ -61,14 +78,14 @@ async def create_comment(
     await db.commit()
     await db.refresh(comment)
     
-    # Reload with author
+    # Перезагружаем с данными автора
     result = await db.execute(
         select(Comment)
         .options(selectinload(Comment.author))
         .where(Comment.id == comment.id)
     )
     
-    # Send notification about new comment
+    # Отправляем уведомление
     from shared.tasks import notify_new_comment
     notify_new_comment.delay(incident_id, author_id, data.content)
     
@@ -77,6 +94,7 @@ async def create_comment(
 
 @router.delete("/comments/{comment_id}")
 async def delete_comment(comment_id: str, db: AsyncSession = Depends(get_db)):
+    """Удаление комментария."""
     result = await db.execute(select(Comment).where(Comment.id == comment_id))
     comment = result.scalar_one_or_none()
     if not comment:
@@ -88,6 +106,7 @@ async def delete_comment(comment_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/incidents/{incident_id}/attachments")
 async def list_attachments(incident_id: str, db: AsyncSession = Depends(get_db)):
+    """Список вложений инцидента (новые первые)."""
     result = await db.execute(
         select(Attachment)
         .where(Attachment.incident_id == incident_id)
@@ -115,14 +134,19 @@ async def upload_attachment(
     uploader_id: str = "40000000-0000-0000-0000-000000000001",
     db: AsyncSession = Depends(get_db)
 ):
+    """
+    Загрузка файла к инциденту.
+    
+    Файлы сохраняются в /app/uploads/{incident_id}/
+    """
     import os
     import aiofiles
     
-    # Create directory
+    # Создаём директорию
     upload_dir = os.path.join("/app/uploads", incident_id)
     os.makedirs(upload_dir, exist_ok=True)
     
-    # Save file
+    # Сохраняем файл
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
     filename = f"{uuid.uuid4().hex}.{ext}"
     filepath = os.path.join(upload_dir, filename)
@@ -131,7 +155,7 @@ async def upload_attachment(
     async with aiofiles.open(filepath, "wb") as f:
         await f.write(contents)
     
-    # Create record
+    # Создаём запись в БД
     attachment = Attachment(
         incident_id=uuid.UUID(incident_id),
         uploader_id=uuid.UUID(uploader_id),
@@ -157,6 +181,7 @@ async def upload_attachment(
 
 @router.get("/attachments/{attachment_id}/download")
 async def download_attachment(attachment_id: str, db: AsyncSession = Depends(get_db)):
+    """Скачивание файла по ID."""
     from fastapi.responses import FileResponse
     
     result = await db.execute(select(Attachment).where(Attachment.id == attachment_id))
@@ -182,7 +207,11 @@ async def delete_attachment(
     user_id: str = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete an attachment. Only uploader or admin can delete."""
+    """
+    Удаление файла.
+    
+    Может удалить только загрузивший пользователь или администратор.
+    """
     import os
     
     result = await db.execute(select(Attachment).where(Attachment.id == attachment_id))
@@ -191,11 +220,11 @@ async def delete_attachment(
     if not attachment:
         raise HTTPException(status_code=404, detail="Файл не найден")
     
-    # Delete file from disk
+    # Удаляем файл с диска
     if os.path.exists(attachment.filepath):
         os.remove(attachment.filepath)
     
-    # Delete from database
+    # Удаляем из БД
     await db.delete(attachment)
     await db.commit()
     

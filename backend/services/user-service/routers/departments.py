@@ -1,5 +1,11 @@
 """
-Department management routes
+API управления отделами — CRUD.
+
+Endpoint'ы:
+- GET /departments — список отделов (пагинация)
+- GET /departments/{id} — данные отдела
+- POST /departments — создание отдела
+- PUT /departments/{id} — обновление отдела
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +23,7 @@ async def list_departments(
     page: int = 1, limit: int = 20,
     db: AsyncSession = Depends(get_db)
 ):
+    """Список отделов с пагинацией."""
     offset = (page - 1) * limit
     result = await db.execute(select(Department).offset(offset).limit(limit))
     departments = result.scalars().all()
@@ -27,6 +34,7 @@ async def list_departments(
 
 @router.get("/{dept_id}", response_model=DepartmentResponse)
 async def get_department(dept_id: str, db: AsyncSession = Depends(get_db)):
+    """Получение отдела по ID."""
     result = await db.execute(select(Department).where(Department.id == dept_id))
     dept = result.scalar_one_or_none()
     if not dept:
@@ -36,6 +44,7 @@ async def get_department(dept_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=DepartmentResponse, status_code=201)
 async def create_department(data: DepartmentCreate, db: AsyncSession = Depends(get_db)):
+    """Создание нового отдела."""
     dept = Department(name=data.name, description=data.description, manager_id=data.manager_id)
     db.add(dept)
     await db.commit()
@@ -45,6 +54,7 @@ async def create_department(data: DepartmentCreate, db: AsyncSession = Depends(g
 
 @router.put("/{dept_id}", response_model=DepartmentResponse)
 async def update_department(dept_id: str, data: DepartmentUpdate, db: AsyncSession = Depends(get_db)):
+    """Обновление данных отдела."""
     result = await db.execute(select(Department).where(Department.id == dept_id))
     dept = result.scalar_one_or_none()
     if not dept:

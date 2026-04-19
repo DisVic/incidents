@@ -1,5 +1,12 @@
 """
-Shared package for all microservices
+Пакет shared — общие модули для всех микросервисов.
+
+Содержит:
+- Конфигурация (config.py)
+- Модели базы данных (models.py)
+- Утилиты: хеширование, JWT, SLA-расчёты (utils.py)
+- Celery-задачи для фоновой обработки (tasks.py)
+- Скрипты инициализации БД (init_db.py, reset_admin.py)
 """
 from shared.config import settings
 from shared.database import get_db, async_session

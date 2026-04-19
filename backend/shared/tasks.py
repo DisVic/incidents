@@ -1,5 +1,17 @@
 """
-Celery tasks for SLA monitoring and escalation
+Celery-задачи: мониторинг SLA, эскалация, отправка уведомлений.
+
+Задачи запускаются каждые 5 минут через Celery Beat:
+- check_sla_overdue — проверка просрочек SLA
+- check_escalation — проверка эскалации (80% SLA)
+
+Уведомления по событиям:
+- notify_incident_created — новый инцидент
+- notify_incident_assigned — назначение исполнителя
+- notify_status_changed — смена статуса
+- notify_new_comment — новый комментарий
+- notify_incident_resolved/closed — решение/закрытие
+- notify_priority_changed — изменение приоритета
 """
 import logging
 from datetime import datetime
@@ -21,14 +33,14 @@ logger = logging.getLogger(__name__)
 
 
 async def get_user_notification_settings(db, user_id: UUID) -> dict:
-    """Get notification settings for a user, with defaults if not set"""
+    """Получает настройки уведомлений пользователя (или дефолтные)."""
     result = await db.execute(
         select(NotificationSettings).where(NotificationSettings.user_id == user_id)
     )
     ns = result.scalar_one_or_none()
     
     if not ns:
-        # Return defaults
+        # Возвращаем настройки по умолчанию
         return {
             "incident_created": {"internal": True, "email": False},
             "assigned_executor": {"internal": True, "email": True},
@@ -54,7 +66,7 @@ async def get_user_notification_settings(db, user_id: UUID) -> dict:
 
 async def send_internal_notification(db, user_id: UUID, incident_id: UUID, 
                                       type: str, title: str, message: str):
-    """Create an internal notification in the database"""
+    """Создаёт внутреннее уведомление (колокольчик) в БД."""
     notification = Notification(
         user_id=user_id,
         incident_id=incident_id,
@@ -67,13 +79,21 @@ async def send_internal_notification(db, user_id: UUID, incident_id: UUID,
 
 async def send_email_notification(user: User, incident: Incident, 
                                    email_type: str, extra: dict = None):
-    """Send email notification using HTML templates"""
+    """
+    Отправляет email через notification-service (HTML-шаблоны).
+    
+    Args:
+        user: Получатель
+        incident: Данные инцидента для шаблона
+        email_type: Тип письма (incident_created, sla_overdue, etc.)
+        extra: Дополнительные данные для шаблона
+    """
     import httpx
     
     if not user.email:
         return
     
-    # Prepare incident data for template
+    # Формируем данные инцидента для шаблона
     incident_data = {
         "id": str(incident.id),
         "title": incident.title,
@@ -111,15 +131,21 @@ async def send_notification_with_settings(db, user: User, incident: Incident,
                                            event_type: str, email_type: str,
                                            title: str, message: str,
                                            extra: dict = None):
-    """Send notification respecting user settings"""
+    """
+    Отправляет уведомление с учётом настроек пользователя (internal/email).
+    
+    Args:
+        event_type: Тип события для проверки настроек (incident_created, etc.)
+        email_type: Тип email-шаблона
+    """
     user_settings = await get_user_notification_settings(db, user.id)
     event_settings = user_settings.get(event_type, {"internal": True, "email": True})
     
-    # Internal notification
+    # Внутреннее уведомление
     if event_settings.get("internal", True):
         await send_internal_notification(db, user.id, incident.id, event_type, title, message)
     
-    # Email notification
+    # Email
     if event_settings.get("email", True):
         await send_email_notification(user, incident, email_type, extra)
 
@@ -127,8 +153,9 @@ async def send_notification_with_settings(db, user: User, incident: Incident,
 @celery_app.task(name="shared.tasks.check_sla_overdue")
 def check_sla_overdue():
     """
-    Check all active incidents for SLA overdue.
-    Runs every 5 minutes.
+    Проверка активных инцидентов на просрочку SLA (каждые 5 мин).
+    
+    Устанавливает overdue=True, отправляет уведомления Manager/Admin.
     """
     import asyncio
     return asyncio.run(_check_sla_overdue_async())
@@ -136,7 +163,7 @@ def check_sla_overdue():
 
 async def _check_sla_overdue_async():
     async with async_session() as db:
-        # Get active statuses (Новый, Назначен, В работе)
+        # Получаем активные статусы (Новый, Назначен, В работе)
         active_status_names = ["Новый", "Назначен", "В работе"]
         status_result = await db.execute(
             select(Status).where(Status.name.in_(active_status_names))
@@ -144,7 +171,7 @@ async def _check_sla_overdue_async():
         active_statuses = status_result.scalars().all()
         active_status_ids = [s.id for s in active_statuses]
         
-        # Find incidents that are overdue but not marked
+        # Находим инциденты с просрочкой, но ещё не помеченные
         now = datetime.utcnow()
         result = await db.execute(
             select(Incident)
@@ -169,23 +196,23 @@ async def _check_sla_overdue_async():
         logger.info(f"SLA Monitor: Found {len(overdue_incidents)} overdue incidents")
         
         for incident in overdue_incidents:
-            # Mark as overdue
+            # Помечаем как просроченный
             incident.overdue = True
             
-            # Calculate overdue hours
+            # Считаем часы просрочки
             overdue_hours = (now - incident.sla_deadline).total_seconds() / 3600
             
-            # Add history entry
+            # Добавляем запись в историю
             history = IncidentHistory(
                 incident_id=incident.id,
-                user_id=None,  # System
+                user_id=None,  # Система
                 previous_status_id=incident.status_id,
                 new_status_id=incident.status_id,
                 comment="Автоматическая просрочка по SLA"
             )
             db.add(history)
             
-            # Send notifications
+            # Отправляем уведомления
             await _send_overdue_notifications(db, incident, overdue_hours)
         
         await db.commit()
@@ -248,10 +275,10 @@ async def _send_overdue_notifications(db, incident, overdue_hours: float):
 @celery_app.task(name="shared.tasks.check_escalation")
 def check_escalation():
     """
-    Check for incidents that need escalation.
-    Level 1: 80% of SLA time passed
-    Level 2: Overdue
-    Runs every 5 minutes.
+    Проверка инцидентов для эскалации (каждые 5 мин).
+    
+    L1: 80% SLA — уведомление Manager/Admin
+    L2: просрочка — обрабатывается в check_sla_overdue
     """
     import asyncio
     return asyncio.run(_check_escalation_async())
@@ -259,7 +286,7 @@ def check_escalation():
 
 async def _check_escalation_async():
     async with async_session() as db:
-        # Get active statuses
+        # Получаем активные статусы
         active_status_names = ["Новый", "Назначен", "В работе"]
         status_result = await db.execute(
             select(Status).where(Status.name.in_(active_status_names))
@@ -267,13 +294,13 @@ async def _check_escalation_async():
         active_statuses = status_result.scalars().all()
         active_status_ids = [s.id for s in active_statuses]
         
-        # Get escalation rules
+        # Получаем правила эскалации
         rules_result = await db.execute(
             select(EscalationRule).where(EscalationRule.is_active == True)
         )
         rules = rules_result.scalars().all()
         
-        # Find active incidents
+        # Находим активные инциденты
         result = await db.execute(
             select(Incident)
             .options(
@@ -291,20 +318,20 @@ async def _check_escalation_async():
         escalated_count = 0
         
         for incident in incidents:
-            # Calculate SLA percentage
+            # Считаем % использования SLA
             if incident.sla_deadline:
                 sla_percentage = get_sla_percentage(
                     incident.created_at,
                     incident.sla_deadline
                 )
                 
-                # Level 1: 80% SLA (warning)
+                # Level 1: 80% SLA (предупреждение)
                 if sla_percentage >= 80 and not incident.overdue:
                     await _escalate_level_1(db, incident, rules, sla_percentage)
                     escalated_count += 1
                 
-                # Level 2 (overdue) handled separately by check_sla_overdue task
-                # No duplicate notification needed
+                # Level 2 (просрочка) обрабатывается отдельно в check_sla_overdue
+                # Дублирующих уведомлений не отправляем
         
         await db.commit()
         return {"checked": True, "escalated": escalated_count}
@@ -387,9 +414,7 @@ async def _escalate_level_1(db, incident, rules, sla_percentage: float):
 @celery_app.task(name="shared.tasks.send_notification")
 def send_notification(user_id: str, incident_id: str = None, 
                       type: str = "info", title: str = "", message: str = ""):
-    """
-    Send a notification to a specific user.
-    """
+    """Отправка уведомления конкретному пользователю."""
     import asyncio
     return asyncio.run(_send_notification_async(user_id, incident_id, type, title, message))
 
@@ -411,7 +436,11 @@ async def _send_notification_async(user_id: str, incident_id: str,
 
 @celery_app.task(name="shared.tasks.notify_incident_created")
 def notify_incident_created(incident_id: str):
-    """Notify managers/admins and executors of the department about new incident"""
+    """
+    Уведомление о новом инциденте.
+    
+    Получатели: Manager отдела, Admin, Executor'ы отдела.
+    """
     import asyncio
     return asyncio.run(_notify_incident_created_async(incident_id))
 
@@ -514,105 +543,73 @@ async def _notify_incident_created_async(incident_id: str):
 
 @celery_app.task(name="shared.tasks.notify_incident_assigned")
 def notify_incident_assigned(incident_id: str, executor_id: str, assigned_by_id: str = None):
-    """Notify about assignment - Executor, Manager, Admin (except who assigned)"""
+    """
+    Уведомление о назначении исполнителя.
+    
+    Получатели: исполнитель, Manager отдела, Admin (кроме назначившего).
+    """
     import asyncio
     return asyncio.run(_notify_incident_assigned_async(incident_id, executor_id, assigned_by_id))
-
-
-async def _notify_incident_assigned_async(incident_id: str, executor_id: str, assigned_by_id: str):
-    """Send notification about assignment to Executor, Manager, Admin (excluding assigner)"""
-    async with async_session() as db:
-        # Get incident with relations
-        result = await db.execute(
-            select(Incident)
-            .options(
-                selectinload(Incident.initiator),
-                selectinload(Incident.executor),
-                selectinload(Incident.priority),
-                selectinload(Incident.category),
-                selectinload(Incident.department)
-            )
-            .where(Incident.id == UUID(incident_id))
-        )
-        incident = result.scalar_one_or_none()
-        
-        if not incident:
-            return {"error": "Incident not found"}
-        
-        # Get executor
-        executor_result = await db.execute(
-            select(User).where(User.id == UUID(executor_id))
-        )
-        executor = executor_result.scalar_one_or_none()
-        
-        if not executor:
-            return {"error": "Executor not found"}
-        
-        # Get Admin role - Admins get all notifications
-        admin_role_result = await db.execute(
-            select(Role).where(Role.name == "Admin")
-        )
-        admin_role = admin_role_result.scalar_one_or_none()
-        
-        # Get Manager role - only from incident's department
-        manager_role_result = await db.execute(
-            select(Role).where(Role.name == "Manager")
-        )
-        manager_role = manager_role_result.scalar_one_or_none()
-        
-        # Build recipients list: Executor + Manager (dept) + Admin, excluding assigner
-        recipients = []
-        
-        # Add executor (if not the one who assigned)
-        if str(executor.id) != assigned_by_id:
-            recipients.append(executor)
-        
-        # Add all Admins (excluding assigner)
-        if admin_role:
-            admins_result = await db.execute(
-                select(User).where(User.role_id == admin_role.id, User.is_active == True)
-            )
-            admins = list(admins_result.scalars().all())
-            for admin in admins:
-                if str(admin.id) != assigned_by_id and admin not in recipients:
-                    recipients.append(admin)
-        
-        # Add Manager from incident's department only (excluding assigner)
-        if manager_role and incident.department_id:
-            dept_managers_result = await db.execute(
-                select(User).where(
-                    User.role_id == manager_role.id,
-                    User.department_id == incident.department_id,
-                    User.is_active == True
-                )
-            )
-            dept_managers = list(dept_managers_result.scalars().all())
-            for manager in dept_managers:
-                if str(manager.id) != assigned_by_id and manager not in recipients:
-                    recipients.append(manager)
-        
-        for user in recipients:
-            await send_notification_with_settings(
-                db=db,
-                user=user,
-                incident=incident,
-                event_type="assigned_executor",
-                email_type="incident_assigned",
-                title=f"Назначение исполнителя: #{str(incident.id)[:8]}",
-                message=f"Инцидент '{incident.title}' назначен исполнителю: {executor.full_name}"
-            )
-        
-        await db.commit()
-        return {"sent": True, "recipients": len(recipients)}
 
 
 @celery_app.task(name="shared.tasks.notify_status_changed")
 def notify_status_changed(incident_id: str, old_status: str, new_status: str, 
                           comment: str = "", changed_by_id: str = None):
-    """Notify about status change (excluding the one who changed it)"""
+    """
+    Уведомление о смене статуса.
+    
+    Получатели: инициатор и исполнитель (кроме того, кто изменил).
+    """
     import asyncio
     return asyncio.run(_notify_status_changed_async(
         incident_id, old_status, new_status, comment, changed_by_id
+    ))
+
+
+@celery_app.task(name="shared.tasks.notify_new_comment")
+def notify_new_comment(incident_id: str, author_id: str, comment_content: str):
+    """
+    Уведомление о новом комментарии.
+    
+    Получатели: инициатор и исполнитель (кроме автора).
+    """
+    import asyncio
+    return asyncio.run(_notify_new_comment_async(incident_id, author_id, comment_content))
+
+
+@celery_app.task(name="shared.tasks.notify_incident_resolved")
+def notify_incident_resolved(incident_id: str, resolved_by_id: str, comment: str = ""):
+    """
+    Уведомление о решении инцидента.
+    
+    Получатели: инициатор, Manager отдела, Admin (кроме решившего).
+    """
+    import asyncio
+    return asyncio.run(_notify_incident_resolved_async(incident_id, resolved_by_id, comment))
+
+
+@celery_app.task(name="shared.tasks.notify_incident_closed")
+def notify_incident_closed(incident_id: str, closed_by_id: str):
+    """
+    Уведомление о закрытии инцидента.
+    
+    Получатели: инициатор (кроме закрывшего).
+    """
+    import asyncio
+    return asyncio.run(_notify_incident_closed_async(incident_id, closed_by_id))
+
+
+@celery_app.task(name="shared.tasks.notify_priority_changed")
+def notify_priority_changed(incident_id: str, old_priority: str, new_priority: str, 
+                             new_deadline: str = None, changed_by_id: str = None):
+    """
+    Уведомление об изменении приоритета.
+    
+    Получатели: инициатор и исполнитель (кроме изменившего).
+    """
+    import asyncio
+    return asyncio.run(_notify_priority_changed_async(
+        incident_id, old_priority, new_priority, new_deadline, changed_by_id
     ))
 
 
@@ -670,7 +667,7 @@ async def _notify_status_changed_async(incident_id: str, old_status: str,
 
 @celery_app.task(name="shared.tasks.notify_new_comment")
 def notify_new_comment(incident_id: str, author_id: str, comment_content: str):
-    """Notify about new comment - always sent to initiator and executor"""
+    # Уведомляет о новом комментарии: инициатор и исполнитель (кроме автора)
     import asyncio
     return asyncio.run(_notify_new_comment_async(incident_id, author_id, comment_content))
 
@@ -740,7 +737,7 @@ async def _notify_new_comment_async(incident_id: str, author_id: str, comment_co
 
 @celery_app.task(name="shared.tasks.notify_incident_resolved")
 def notify_incident_resolved(incident_id: str, resolved_by_id: str, comment: str = ""):
-    """Notify about resolved incident - initiator, executor (excluding resolver), and department manager"""
+    # Уведомляет о решении: инициатор, Manager отдела, Admin (кроме решившего)
     import asyncio
     return asyncio.run(_notify_incident_resolved_async(incident_id, resolved_by_id, comment))
 

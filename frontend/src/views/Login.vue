@@ -1,4 +1,11 @@
 <script setup>
+/**
+ * Страница входа в систему.
+ * 
+ * Форма: email + пароль
+ * - Перенаправляет на страницу из query.redirect или на /
+ * - Показывает ошибку при неудачной авторизации
+ */
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -12,6 +19,9 @@ const password = ref('')
 const error = ref('')
 const loading = ref(false)
 
+/**
+ * Обработка входа.
+ */
 const handleLogin = async () => {
   error.value = ''
   loading.value = true
@@ -31,18 +41,18 @@ const handleLogin = async () => {
 <template>
   <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
     <div class="max-w-md w-full mx-4">
-      <!-- Logo -->
+      <!-- Логотип -->
       <div class="text-center mb-8">
         <h1 class="text-4xl font-bold text-white mb-2">IMS</h1>
         <p class="text-slate-400">Система управления инцидентами</p>
       </div>
       
-      <!-- Login form -->
+      <!-- Форма входа -->
       <div class="bg-white rounded-2xl shadow-2xl p-8">
         <h2 class="text-2xl font-bold text-slate-800 mb-6">Вход в систему</h2>
         
         <form @submit.prevent="handleLogin">
-          <!-- Error message -->
+          <!-- Сообщение об ошибке -->
           <div v-if="error" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
             {{ error }}
           </div>
@@ -59,7 +69,7 @@ const handleLogin = async () => {
             />
           </div>
           
-          <!-- Password -->
+          <!-- Пароль -->
           <div class="mb-6">
             <label class="block text-sm font-medium text-slate-700 mb-2">Пароль</label>
             <input
@@ -71,7 +81,7 @@ const handleLogin = async () => {
             />
           </div>
           
-          <!-- Submit -->
+          <!-- Кнопка входа -->
           <button
             type="submit"
             :disabled="loading"
@@ -81,7 +91,7 @@ const handleLogin = async () => {
             <span v-else>Войти</span>
           </button>
           
-          <!-- Forgot password link -->
+          <!-- Ссылка на восстановление пароля -->
           <div class="mt-4 text-center">
             <router-link to="/forgot-password" class="text-sm text-primary-600 hover:text-primary-700">
               Забыли пароль?

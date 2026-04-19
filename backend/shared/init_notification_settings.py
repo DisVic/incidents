@@ -1,5 +1,12 @@
 """
-Initialize notification settings for all users
+Инициализация настроек уведомлений для всех пользователей.
+
+Скрипт создаёт или обновляет настройки уведомлений:
+- Admin/Manager: все уведомления включены (internal + email)
+- Executor/User: email-уведомления только для важных событий
+
+Запуск:
+    python -m shared.init_notification_settings
 """
 import asyncio
 from sqlalchemy import select
@@ -8,9 +15,9 @@ from shared.models import User, Role, NotificationSettings
 
 
 async def init_notification_settings():
-    """Create notification settings for all users with all notifications enabled"""
+    """Создаёт настройки уведомлений для всех пользователей с роль-зависимыми дефолтами."""
     async with async_session() as db:
-        # Get all users
+        # Получаем всех пользователей
         result = await db.execute(select(User))
         users = result.scalars().all()
         
@@ -18,27 +25,24 @@ async def init_notification_settings():
         updated_count = 0
         
         for user in users:
-            # Check if settings already exist
+            # Проверяем, есть ли уже настройки
             existing = await db.execute(
                 select(NotificationSettings).where(NotificationSettings.user_id == user.id)
             )
             ns = existing.scalar_one_or_none()
             
-            # Get user role
+            # Получаем роль пользователя
             role_result = await db.execute(
                 select(Role).where(Role.id == user.role_id)
             )
             role = role_result.scalar_one_or_none()
             role_name = role.name if role else "Executor"
             
-            # Define default settings based on role
-            all_enabled = {
-                "internal": True, 
-                "email": True
-            }
+            # Настройки по умолчанию в зависимости от роли
+            all_enabled = {"internal": True, "email": True}
             
             if role_name == "Admin":
-                # Admin gets all notifications
+                # Admin получает все уведомления
                 settings = {
                     "incident_created": all_enabled,
                     "assigned_executor": all_enabled,
@@ -49,7 +53,7 @@ async def init_notification_settings():
                     "escalation": all_enabled
                 }
             elif role_name == "Manager":
-                # Manager gets all notifications
+                # Manager получает все уведомления
                 settings = {
                     "incident_created": all_enabled,
                     "assigned_executor": all_enabled,
@@ -60,7 +64,7 @@ async def init_notification_settings():
                     "escalation": all_enabled
                 }
             else:
-                # Executor gets most notifications
+                # Executor получает только важные email-уведомления
                 settings = {
                     "incident_created": {"internal": True, "email": False},
                     "assigned_executor": all_enabled,
@@ -72,12 +76,12 @@ async def init_notification_settings():
                 }
             
             if ns:
-                # Update existing
+                # Обновляем существующие настройки
                 for key, value in settings.items():
                     setattr(ns, key, value)
                 updated_count += 1
             else:
-                # Create new
+                # Создаём новые настройки
                 ns = NotificationSettings(
                     user_id=user.id,
                     **settings

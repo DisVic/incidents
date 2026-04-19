@@ -1,4 +1,12 @@
 <script setup>
+/**
+ * Статистика исполнителя: инциденты, метрики, периоды.
+ * 
+ * Функции:
+ * - Периоды: месяц, квартал, год, конкретный месяц, свой период
+ * - Метрики: назначено, решено, в работе, просрочено, среднее время, SLA%
+ * - Таблица инцидентов со статусами и приоритетами
+ */
 import { ref, onMounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
@@ -38,7 +46,9 @@ const monthOptions = computed(() => {
 const customDateFrom = ref('')
 const customDateTo = ref('')
 
-// Compute date range
+/**
+ * Вычисление диапазона дат в зависимости от выбранного периода.
+ */
 const dateRange = computed(() => {
   if (period.value === 'specific_month' && specificMonth.value) {
     const [year, month] = specificMonth.value.split('-').map(Number)
@@ -58,6 +68,9 @@ const dateRange = computed(() => {
   return null
 })
 
+/**
+ * Загрузка статистики при монтировании.
+ */
 onMounted(() => {
   // Set default specific month to current month
   const now = new Date()
@@ -65,6 +78,9 @@ onMounted(() => {
   loadStats()
 })
 
+/**
+ * Перезагрузка статистики при изменении периода/дат.
+ */
 watch([period, specificMonth, customDateFrom, customDateTo], () => {
   if (period.value === 'custom' && (!customDateFrom.value || !customDateTo.value)) {
     return // Don't reload until both dates are set
@@ -72,6 +88,9 @@ watch([period, specificMonth, customDateFrom, customDateTo], () => {
   loadStats()
 })
 
+/**
+ * Загрузка данных статистики с backend.
+ */
 async function loadStats() {
   loading.value = true
   error.value = ''
@@ -94,6 +113,9 @@ async function loadStats() {
   }
 }
 
+/**
+ * Форматирование даты (DD.MM.YYYY HH:MM).
+ */
 function formatDate(dateStr) {
   if (!dateStr) return '—'
   const date = new Date(dateStr)
@@ -106,6 +128,9 @@ function formatDate(dateStr) {
   })
 }
 
+/**
+ * Форматирование времени в часах/днях.
+ */
 function formatHours(hours) {
   if (!hours) return '—'
   if (hours < 24) return `${Math.round(hours)} ч`
@@ -114,10 +139,16 @@ function formatHours(hours) {
   return `${days} д ${remainingHours} ч`
 }
 
+/**
+ * Возврат на предыдущую страницу.
+ */
 function goBack() {
   router.back()
 }
 
+/**
+ * CSS-класс для бейджа статуса.
+ */
 function getStatusClass(status) {
   const classes = {
     'Новый': 'bg-blue-100 text-blue-800',
@@ -129,6 +160,9 @@ function getStatusClass(status) {
   return classes[status] || 'bg-gray-100 text-gray-800'
 }
 
+/**
+ * CSS-класс для бейджа приоритета.
+ */
 function getPriorityClass(priority) {
   const classes = {
     'Критический': 'bg-red-100 text-red-800',
@@ -142,11 +176,12 @@ function getPriorityClass(priority) {
 
 <template>
   <div class="min-h-screen bg-slate-50">
-    <!-- Header -->
+    <!-- Header: кнопка назад + заголовок + селектор периода -->
     <div class="bg-white shadow-sm border-b border-slate-200">
       <div class="max-w-7xl mx-auto px-4 py-4">
         <div class="flex items-center justify-between flex-wrap gap-4">
           <div class="flex items-center gap-4">
+            <!-- Кнопка назад -->
             <button @click="goBack" class="p-2 hover:bg-slate-100 rounded-lg transition-colors">
               <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
@@ -158,18 +193,19 @@ function getPriorityClass(priority) {
             </div>
           </div>
           
+          <!-- Селектор периода -->
           <div class="flex items-center gap-3 flex-wrap">
             <select v-model="period" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
               <option v-for="p in periods" :key="p.value" :value="p.value">{{ p.label }}</option>
             </select>
             
-            <!-- Specific month selector -->
+            <!-- Конкретный месяц -->
             <select v-if="period === 'specific_month'" v-model="specificMonth"
                     class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
               <option v-for="m in monthOptions" :key="m.value" :value="m.value">{{ m.label }}</option>
             </select>
             
-            <!-- Custom date inputs -->
+            <!-- Свой период (дата от/до) -->
             <template v-if="period === 'custom'">
               <input type="date" v-model="customDateFrom"
                      class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
@@ -182,22 +218,22 @@ function getPriorityClass(priority) {
       </div>
     </div>
     
-    <!-- Loading -->
+    <!-- Загрузка -->
     <div v-if="loading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
     </div>
     
-    <!-- Error -->
+    <!-- Ошибка -->
     <div v-else-if="error" class="max-w-7xl mx-auto px-4 py-8">
       <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
         {{ error }}
       </div>
     </div>
     
-    <!-- Content -->
+    <!-- Контент -->
     <template v-else-if="userData">
       <div class="max-w-7xl mx-auto px-4 py-6">
-        <!-- User info -->
+        <!-- Информация о пользователе -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
           <div class="flex items-center gap-6">
             <div 
@@ -216,7 +252,7 @@ function getPriorityClass(priority) {
           </div>
         </div>
         
-        <!-- Stats cards -->
+        <!-- Карточки метрик -->
         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
           <div class="bg-white rounded-xl shadow-sm p-4 border border-slate-200">
             <p class="text-sm text-slate-500">Назначено</p>
@@ -251,7 +287,7 @@ function getPriorityClass(priority) {
           </div>
         </div>
         
-        <!-- Incidents table -->
+        <!-- Таблица инцидентов -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div class="px-6 py-4 border-b border-slate-200">
             <h3 class="text-lg font-semibold text-slate-800">Инциденты</h3>

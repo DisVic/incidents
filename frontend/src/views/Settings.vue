@@ -1,29 +1,40 @@
 <script setup>
+/**
+ * Настройки системы: статусы, категории, SLA-политики (только Admin).
+ * 
+ * Вкладки:
+ * - Статусы: CRUD статусов инцидентов (название, цвет)
+ * - Категории: CRUD категорий (название, описание)
+ * - SLA-политики: редактирование времени решения по приоритетам
+ */
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { useModal } from '@/composables/useModal'
 
 const { alert: showAlert, confirm: showConfirm } = useModal()
 
-const activeTab = ref('statuses')
+const activeTab = ref('statuses')  // Текущая вкладка
 const loading = ref(false)
 
-// Data
-const statuses = ref([])
-const categories = ref([])
-const slaPolicies = ref([])
-const priorities = ref([])
+// === Данные ===
+const statuses = ref([])      // Статусы инцидентов
+const categories = ref([])    // Категории инцидентов
+const slaPolicies = ref([])   // SLA-политики по приоритетам
+const priorities = ref([])    // Приоритеты
 
-// Modals
+// === Модальные окна ===
 const showStatusModal = ref(false)
 const showCategoryModal = ref(false)
 const showSLAModal = ref(false)
 
-// Forms
+// === Формы ===
 const statusForm = ref({ id: null, name: '', color: '#6B7280' })
 const categoryForm = ref({ id: null, name: '', description: '' })
 const slaForm = ref({ id: null, priority_id: null, resolution_hours: 4, description: '' })
 
+/**
+ * Загрузка всех данных настроек.
+ */
 const loadData = async () => {
   loading.value = true
   try {
@@ -47,6 +58,9 @@ const loadData = async () => {
 onMounted(loadData)
 
 // === STATUSES ===
+/**
+ * Открытие модального окна создания/редактирования статуса.
+ */
 const editStatus = (status = null) => {
   if (status) {
     statusForm.value = { id: status.id, name: status.name, color: status.color || '#6B7280' }
@@ -56,6 +70,9 @@ const editStatus = (status = null) => {
   showStatusModal.value = true
 }
 
+/**
+ * Сохранение статуса (создание или обновление).
+ */
 const saveStatus = async () => {
   try {
     if (statusForm.value.id) {
@@ -76,6 +93,9 @@ const saveStatus = async () => {
   }
 }
 
+/**
+ * Удаление статуса с подтверждением.
+ */
 const deleteStatus = async (status) => {
   const confirmed = await showConfirm(`Удалить статус "${status.name}"?`, 'Удаление статуса')
   if (!confirmed) return
@@ -89,6 +109,9 @@ const deleteStatus = async (status) => {
 }
 
 // === CATEGORIES ===
+/**
+ * Открытие модального окна создания/редактирования категории.
+ */
 const editCategory = (category = null) => {
   if (category) {
     categoryForm.value = { id: category.id, name: category.name, description: category.description || '' }
@@ -98,6 +121,9 @@ const editCategory = (category = null) => {
   showCategoryModal.value = true
 }
 
+/**
+ * Сохранение категории (создание или обновление).
+ */
 const saveCategory = async () => {
   try {
     if (categoryForm.value.id) {
@@ -118,6 +144,9 @@ const saveCategory = async () => {
   }
 }
 
+/**
+ * Удаление категории с подтверждением.
+ */
 const deleteCategory = async (category) => {
   const confirmed = await showConfirm(`Удалить категорию "${category.name}"?`, 'Удаление категории')
   if (!confirmed) return
@@ -131,6 +160,9 @@ const deleteCategory = async (category) => {
 }
 
 // === SLA ===
+/**
+ * Открытие модального окна редактирования SLA-политики.
+ */
 const editSLA = (policy) => {
   slaForm.value = { 
     id: policy.id, 
@@ -142,6 +174,9 @@ const editSLA = (policy) => {
   showSLAModal.value = true
 }
 
+/**
+ * Сохранение SLA-политики (время решения + описание).
+ */
 const saveSLA = async () => {
   try {
     await axios.put(`/api/sla/policies/${slaForm.value.id}`, {
@@ -160,7 +195,7 @@ const saveSLA = async () => {
   <div>
     <h1 class="text-2xl font-bold text-slate-800 mb-6">Настройки системы</h1>
     
-    <!-- Tabs -->
+    <!-- Вкладки: Статусы / Категории / SLA -->
     <div class="bg-white rounded-xl shadow-sm border border-slate-200 mb-6">
       <div class="flex border-b border-slate-200">
         <button
@@ -183,12 +218,12 @@ const saveSLA = async () => {
         </button>
       </div>
       
-      <!-- Loading -->
+      <!-- Загрузка -->
       <div v-if="loading" class="p-8 flex justify-center">
         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
       </div>
       
-      <!-- Statuses Tab -->
+      <!-- Вкладка: Статусы -->
       <div v-else-if="activeTab === 'statuses'" class="p-6">
         <div class="flex justify-between items-center mb-4">
           <h2 class="text-lg font-semibold text-slate-800">Статусы инцидентов</h2>
@@ -197,12 +232,15 @@ const saveSLA = async () => {
           </button>
         </div>
         
+        <!-- Список статусов -->
         <div class="space-y-2">
           <div v-for="status in statuses" :key="status.id" class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
             <div class="flex items-center gap-3">
+              <!-- Цветовой индикатор -->
               <div class="w-4 h-4 rounded-full" :style="{ backgroundColor: status.color }"></div>
               <span class="font-medium text-slate-700">{{ status.name }}</span>
             </div>
+            <!-- Кнопки: Редактировать / Удалить -->
             <div class="flex gap-2">
               <button @click="editStatus(status)" class="p-2 text-slate-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -223,7 +261,7 @@ const saveSLA = async () => {
         </div>
       </div>
       
-      <!-- Categories Tab -->
+      <!-- Вкладка: Категории -->
       <div v-else-if="activeTab === 'categories'" class="p-6">
         <div class="flex justify-between items-center mb-4">
           <h2 class="text-lg font-semibold text-slate-800">Категории инцидентов</h2>
@@ -232,12 +270,14 @@ const saveSLA = async () => {
           </button>
         </div>
         
+        <!-- Список категорий -->
         <div class="space-y-2">
           <div v-for="cat in categories" :key="cat.id" class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
             <div>
               <span class="font-medium text-slate-700">{{ cat.name }}</span>
               <p v-if="cat.description" class="text-sm text-slate-500">{{ cat.description }}</p>
             </div>
+            <!-- Кнопки: Редактировать / Удалить -->
             <div class="flex gap-2">
               <button @click="editCategory(cat)" class="p-2 text-slate-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -258,7 +298,7 @@ const saveSLA = async () => {
         </div>
       </div>
       
-      <!-- SLA Tab -->
+      <!-- Вкладка: SLA-политики -->
       <div v-else-if="activeTab === 'sla'" class="p-6">
         <div class="mb-4">
           <h2 class="text-lg font-semibold text-slate-800">SLA-политики по приоритетам</h2>
@@ -268,6 +308,7 @@ const saveSLA = async () => {
           SLA-политики определяют время на решение инцидента в зависимости от приоритета. Рабочие часы: 9:00-18:00, Пн-Пт.
         </p>
         
+        <!-- Список SLA-политик -->
         <div class="space-y-2">
           <div v-for="policy in slaPolicies" :key="policy.id" class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
             <div>
@@ -275,6 +316,7 @@ const saveSLA = async () => {
               <span class="ml-2 text-primary-600 font-semibold">{{ policy.resolution_hours }} ч.</span>
               <p v-if="policy.description" class="text-sm text-slate-500">{{ policy.description }}</p>
             </div>
+            <!-- Кнопка: Редактировать -->
             <div class="flex gap-2">
               <button @click="editSLA(policy)" class="p-2 text-slate-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -291,7 +333,7 @@ const saveSLA = async () => {
       </div>
     </div>
     
-    <!-- Status Modal -->
+    <!-- Модальное окно: Статус -->
     <div v-if="showStatusModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white rounded-xl p-6 w-full max-w-md">
         <h3 class="text-lg font-semibold mb-4">{{ statusForm.id ? 'Редактировать статус' : 'Новый статус' }}</h3>
@@ -321,7 +363,7 @@ const saveSLA = async () => {
       </div>
     </div>
     
-    <!-- Category Modal -->
+    <!-- Модальное окно: Категория -->
     <div v-if="showCategoryModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white rounded-xl p-6 w-full max-w-md">
         <h3 class="text-lg font-semibold mb-4">{{ categoryForm.id ? 'Редактировать категорию' : 'Новая категория' }}</h3>
@@ -348,7 +390,7 @@ const saveSLA = async () => {
       </div>
     </div>
     
-    <!-- SLA Modal -->
+    <!-- Модальное окно: SLA-политика -->
     <div v-if="showSLAModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white rounded-xl p-6 w-full max-w-md">
         <h3 class="text-lg font-semibold mb-4">Редактировать SLA-политику</h3>

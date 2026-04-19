@@ -1,5 +1,18 @@
 """
-Incident Service - Управление инцидентами
+Incident Service — сервис управления инцидентами.
+
+Основные функции:
+- CRUD инцидентов (создание, чтение, обновление, удаление)
+- Комментарии и вложения к инцидентам
+- Справочники: категории, приоритеты, статусы
+- Отчёты и аналитика для дашборда
+- Расчёт SLA и статистика исполнителей
+
+Роутеры:
+- /incidents — инциденты
+- /comments — комментарии и вложения
+- /reference — справочники
+- /reports/* — отчёты для дашборда
 """
 import uuid
 from datetime import datetime, timedelta
@@ -30,6 +43,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Подключение роутеров
 app.include_router(incidents.router, prefix="/incidents", tags=["Incidents"])
 app.include_router(comments.router, prefix="/comments", tags=["Comments"])
 app.include_router(reference.router, prefix="/reference", tags=["Reference"])
@@ -37,6 +51,7 @@ app.include_router(reference.router, prefix="/reference", tags=["Reference"])
 
 @app.get("/health")
 async def health():
+    """Health check endpoint для мониторинга статуса сервиса."""
     return {"service": "incident-service", "status": "healthy"}
 
 

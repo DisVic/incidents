@@ -1,5 +1,18 @@
 """
-Incident management routes
+API инцидентов — создание, назначение, изменение статуса, приоритета.
+
+Endpoint'ы:
+- GET /incidents — список с фильтрацией, сортировкой, пагинацией
+- GET /incidents/{id} — данные инцидента
+- POST /incidents — создание инцидента
+- POST /incidents/{id}/take — взять в работу
+- POST /incidents/{id}/assign — назначить исполнителя
+- POST /incidents/{id}/resolve — отметить решённым
+- POST /incidents/{id}/close — закрыть
+- POST /incidents/{id}/status — изменить статус
+- POST /incidents/{id}/priority — изменить приоритет
+- PUT /incidents/{id}/deadline — изменить дедлайн
+- GET /incidents/{id}/history — история изменений
 """
 import uuid
 from datetime import datetime
@@ -18,13 +31,17 @@ router = APIRouter()
 
 
 async def get_status_by_name(db, name: str) -> Status:
+    """Находит статус по названию (Новый, В работе, etc.)."""
     result = await db.execute(select(Status).where(Status.name == name))
     return result.scalar_one_or_none()
 
 
 def incident_to_dict(incident: Incident) -> dict:
-    """Convert incident to dict with related data"""
-    # Calculate SLA metrics
+    """
+    Конвертирует ORM-объект в словарь для JSON-ответа.
+    Добавляет вычисляемые SLA-метрики: % использованного времени, остаток, цвет статуса.
+    """
+    # Считаем SLA-метрики
     sla_percentage = 0
     sla_remaining = None
     sla_status_color = "green"
@@ -75,13 +92,25 @@ async def list_incidents(
     priority_id: uuid.UUID = None,
     department_id: uuid.UUID = None,
     overdue: bool = None,
-    sla_status: str = Query(None, regex="^(overdue|near|ok)$"),  # SLA status filter
+    sla_status: str = Query(None, regex="^(overdue|near|ok)$"),  # overdue=просрочен, near=>80%, ok=<80%
     search: str = None,
     sort_field: str = Query("created_at", regex="^(created_at|sla_deadline|priority|title)$"),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
-    user_department_id: uuid.UUID = None,  # Для фильтрации по отделу исполнителя
+    user_department_id: uuid.UUID = None,  # Для Executor — фильтр по его отделу
     db: AsyncSession = Depends(get_db)
 ):
+    """
+    Список инцидентов с фильтрацией, сортировкой и пагинацией.
+    
+    Query params:
+    - page, limit: пагинация
+    - status_id, priority_id, department_id: фильтры
+    - overdue: только просроченные (True/False)
+    - sla_status: 'overdue' (просрочен), 'near' (>80% SLA), 'ok' (<80%)
+    - search: поиск по заголовку
+    - sort_field, sort_order: сортировка
+    - user_department_id: фильтр по отделу (для Executor)
+    """
     query = select(Incident).options(
         selectinload(Incident.status),
         selectinload(Incident.priority),
@@ -108,7 +137,7 @@ async def list_incidents(
             select(Status.id).where(Status.name.in_(["Решён", "Закрыт"]))
         )
         closed_ids = [row[0] for row in closed_result.fetchall()]
-        
+    
         if sla_status == "overdue":
             # Show only overdue incidents
             query = query.where(Incident.overdue == True)
@@ -210,6 +239,7 @@ async def list_incidents(
 
 @router.get("/{incident_id}")
 async def get_incident(incident_id: str, db: AsyncSession = Depends(get_db)):
+    """Получение одного инцидента по ID с полными данными (статус, приоритет, исполнитель, SLA)."""
     result = await db.execute(
         select(Incident)
         .options(
@@ -226,10 +256,18 @@ async def get_incident(incident_id: str, db: AsyncSession = Depends(get_db)):
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     return incident_to_dict(incident)
-
+    
 
 @router.post("", status_code=201)
 async def create_incident(data: IncidentCreate, db: AsyncSession = Depends(get_db)):
+    """
+    Создание инцидента.
+    
+    - Устанавливает статус "Новый"
+    - Рассчитывает SLA-дедлайн по приоритету
+    - Добавляет запись в историю
+    - Отправляет уведомления (Manager, Admin, Executor'ы отдела)
+    """
     new_status = await get_status_by_name(db, "Новый")
     if not new_status:
         raise HTTPException(status_code=500, detail="Default status not found")
@@ -292,6 +330,12 @@ async def create_incident(data: IncidentCreate, db: AsyncSession = Depends(get_d
 
 @router.post("/{incident_id}/take")
 async def take_incident(incident_id: str, data: TakeIncident, db: AsyncSession = Depends(get_db)):
+    """
+    Взять инцидент в работу.
+    
+    Executor берёт инцидент только своего отдела.
+    Статус меняется на "В работе".
+    """
     # Получаем инцидент
     result = await db.execute(
         select(Incident)
@@ -381,6 +425,13 @@ async def take_incident(incident_id: str, data: TakeIncident, db: AsyncSession =
 @router.post("/{incident_id}/assign")
 async def assign_incident(incident_id: str, data: AssignExecutor, 
                           db: AsyncSession = Depends(get_db)):
+    """
+    Назначить исполнителя на инцидент.
+    
+    - Manager/Admin назначает (Executor не может переназначить)
+    - Статус -> "Назначен" (если был "Новый")
+    - Executor назначается только на инциденты своего отдела
+    """
     # Получаем инцидент
     result = await db.execute(
         select(Incident)
@@ -499,6 +550,13 @@ async def assign_incident(incident_id: str, data: AssignExecutor,
 @router.post("/{incident_id}/resolve")
 async def resolve_incident(incident_id: str, executor_id: str, comment: str,
                            db: AsyncSession = Depends(get_db)):
+    """
+    Отметить инцидент как решённый.
+    
+    - Статус -> "Решён"
+    - Фиксируется was_overdue для статистики
+    - Отправляется уведомление
+    """
     result = await db.execute(
         select(Incident)
         .options(selectinload(Incident.status))
@@ -546,6 +604,13 @@ async def resolve_incident(incident_id: str, executor_id: str, comment: str,
 
 @router.post("/{incident_id}/close")
 async def close_incident(incident_id: str, data: CloseIncident, db: AsyncSession = Depends(get_db)):
+    """
+    Закрыть инцидент.
+    
+    - Требует статус "Решён"
+    - Статус -> "Закрыт"
+    - Фиксируется was_overdue для статистики
+    """
     result = await db.execute(
         select(Incident)
         .options(selectinload(Incident.status))
@@ -599,6 +664,12 @@ async def close_incident(incident_id: str, data: CloseIncident, db: AsyncSession
 
 @router.post("/{incident_id}/status")
 async def change_status(incident_id: str, data: StatusChange, db: AsyncSession = Depends(get_db)):
+    """
+    Изменить статус инцидента вручную.
+    
+    - Обновляет соответствующий timestamp (in_progress_at, resolved_at, closed_at)
+    - Отправляет уведомление о смене статуса
+    """
     result = await db.execute(
         select(Incident)
         .options(selectinload(Incident.status))
@@ -674,6 +745,7 @@ async def change_status(incident_id: str, data: StatusChange, db: AsyncSession =
 
 @router.get("/{incident_id}/history")
 async def get_history(incident_id: str, db: AsyncSession = Depends(get_db)):
+    """История изменений инцидента (таймлайн) — кто, когда, что изменил."""
     result = await db.execute(
         select(IncidentHistory)
         .where(IncidentHistory.incident_id == incident_id)
@@ -729,7 +801,12 @@ async def change_priority(
     recalculate_deadline: bool = True,
     db: AsyncSession = Depends(get_db)
 ):
-    """Change incident priority with optional deadline recalculation"""
+    """
+    Изменить приоритет инцидента.
+    
+    - При повышении приоритета пересчитывает SLA-дедлайн
+    - Отправляет уведомление об изменении
+    """
     result = await db.execute(
         select(Incident)
         .options(
@@ -818,7 +895,13 @@ async def change_priority(
 
 @router.put("/{incident_id}/deadline")
 async def update_deadline(incident_id: str, data: UpdateDeadline, db: AsyncSession = Depends(get_db)):
-    """Update SLA deadline manually (Manager/Admin only)"""
+    """
+    Изменить SLA-дедлайн вручную (только Manager/Admin).
+    
+    - Manager может менять только для инцидентов своего отдела
+    - Нельзя менять для закрытых/решённых
+    - Опция sla_violation_confirmed для подтверждения нарушения SLA
+    """
     from shared.models import Role
     
     # Get incident
@@ -916,8 +999,10 @@ async def update_deadline(incident_id: str, data: UpdateDeadline, db: AsyncSessi
 
 @router.post("/reset-executor/{user_id}")
 async def reset_executor_incidents(user_id: str, reason: str = "user_deactivated", db=Depends(get_db)):
-    """Reset all incidents assigned to a user back to 'New' status.
-    Called when user is blocked or deleted.
+    """
+    Сбросить все инциденты пользователя в статус "Новый".
+    
+    Вызывается при блокировке/удалении пользователя.
     """
     # Get "New" status
     new_status = await get_status_by_name(db, "Новый")
@@ -970,8 +1055,10 @@ async def change_department(
     user_id: str = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """Change incident department (Manager/Admin only). 
-    If executor is from different department, resets executor assignment.
+    """
+    Изменить отдел инцидента (только Manager/Admin).
+    
+    - Если исполнитель из другого отдела — сбрасывает назначение
     """
     result = await db.execute(
         select(Incident)

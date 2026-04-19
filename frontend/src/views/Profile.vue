@@ -1,4 +1,13 @@
 <script setup>
+/**
+ * Страница профиля пользователя.
+ * 
+ * Функции:
+ * - Просмотр информации о пользователе
+ * - Загрузка/удаление аватара
+ * - Смена пароля
+ * - Настройки уведомлений (Manager/Admin)
+ */
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
@@ -45,10 +54,16 @@ const settingLabels = {
   priority_changed: 'Изменение приоритета'
 }
 
+/**
+ * Настройки уведомлений доступны только Manager/Admin.
+ */
 const canEditNotifications = computed(() => {
   return authStore.isAdmin || authStore.isManager
 })
 
+/**
+ * Вычисляемые свойства для аватара.
+ */
 const avatarUrl = computed(() => {
   if (user.value?.avatar) {
     return user.value.avatar
@@ -60,6 +75,9 @@ const userInitial = computed(() => {
   return user.value?.full_name?.charAt(0)?.toUpperCase() || 'U'
 })
 
+/**
+ * Загрузка данных профиля и настроек уведомлений.
+ */
 onMounted(async () => {
   try {
     const userRes = await axios.get('/api/auth/me')
@@ -88,6 +106,9 @@ onMounted(async () => {
   }
 })
 
+/**
+ * Сохранение настроек уведомлений.
+ */
 async function saveSettings() {
   saving.value = true
   message.value = { type: '', text: '' }
@@ -103,6 +124,9 @@ async function saveSettings() {
   }
 }
 
+/**
+ * Открытие модального окна смены пароля.
+ */
 function openPasswordModal() {
   passwordForm.value = {
     current_password: '',
@@ -113,6 +137,9 @@ function openPasswordModal() {
   showPasswordModal.value = true
 }
 
+/**
+ * Смена пароля с валидацией.
+ */
 async function changePassword() {
   passwordError.value = ''
   
@@ -152,6 +179,9 @@ async function changePassword() {
   }
 }
 
+/**
+ * Загрузка аватара (валидация типа и размера).
+ */
 function triggerAvatarUpload() {
   document.getElementById('avatar-input')?.click()
 }
@@ -211,6 +241,9 @@ async function uploadAvatar(event) {
   event.target.value = ''
 }
 
+/**
+ * Удаление аватара.
+ */
 async function removeAvatar() {
   try {
     await axios.post(`/api/users/${authStore.user?.id}/avatar`, {
@@ -234,7 +267,7 @@ async function removeAvatar() {
   <div class="max-w-3xl mx-auto space-y-6">
     <h1 class="text-2xl font-bold text-slate-800">Профиль</h1>
     
-    <!-- Alert message -->
+    <!-- Сообщение (успех/ошибка) -->
     <div v-if="message.text" 
          :class="[
            'p-4 rounded-lg',
@@ -243,16 +276,17 @@ async function removeAvatar() {
       {{ message.text }}
     </div>
     
+    <!-- Загрузка -->
     <div v-if="loading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>
     
     <template v-else-if="user">
-      <!-- User info card -->
+      <!-- Карточка пользователя -->
       <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
         <div class="flex items-center justify-between mb-6">
           <div class="flex items-center gap-4">
-            <!-- Avatar with upload -->
+            <!-- Аватар с загрузкой -->
             <div class="relative group">
               <div 
                 @click="triggerAvatarUpload"
@@ -260,6 +294,7 @@ async function removeAvatar() {
                 <img v-if="avatarUrl" :src="avatarUrl" alt="Avatar" class="w-full h-full object-cover">
                 <span v-else>{{ userInitial }}</span>
               </div>
+              <!-- Оверлей при наведении -->
               <div 
                 class="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                 @click="triggerAvatarUpload">
@@ -274,7 +309,7 @@ async function removeAvatar() {
                 accept="image/*" 
                 class="hidden" 
                 @change="uploadAvatar">
-              <!-- Loading overlay -->
+              <!-- Индикатор загрузки -->
               <div 
                 v-if="avatarUploading"
                 class="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center">
@@ -292,12 +327,14 @@ async function removeAvatar() {
               </button>
             </div>
           </div>
+          <!-- Кнопка смены пароля -->
           <button @click="openPasswordModal" 
                   class="px-4 py-2 text-sm font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors">
             Сменить пароль
           </button>
         </div>
         
+        <!-- Информация о пользователе -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="flex items-center gap-3 text-slate-600">
             <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -322,10 +359,11 @@ async function removeAvatar() {
         </div>
       </div>
       
-      <!-- Notification settings (Manager/Admin only) -->
+      <!-- Настройки уведомлений (только Manager/Admin) -->
       <div v-if="canEditNotifications" class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
         <h3 class="text-lg font-semibold text-slate-800 mb-4">Настройки уведомлений</h3>
         
+        <!-- Таблица настроек -->
         <div class="overflow-x-auto">
           <table class="w-full">
             <thead>
@@ -376,7 +414,7 @@ async function removeAvatar() {
       </div>
     </template>
     
-    <!-- Password change modal -->
+    <!-- Модальное окно смены пароля -->
     <Modal v-if="showPasswordModal" @close="showPasswordModal = false">
       <template #title>Смена пароля</template>
       

@@ -1,5 +1,12 @@
 """
-Initialize database with seed data
+Инициализация базы данных и создание начальных данных (seed data).
+
+Запускается при первом запуске системы:
+- Создаёт все таблицы по моделям
+- Заполняет справочники: роли, статусы, приоритеты, отделы, категории
+- Создаёт политику SLA для каждого приоритета
+- Создаёт правила эскалации
+- Создаёт пользователя admin@example.com / admin123
 """
 import asyncio
 import uuid
@@ -10,7 +17,8 @@ from shared.database import async_session, engine
 from shared.models import Base, User, Role, Department, Category, Priority, Status, SLAPolicy, EscalationRule, NotificationSettings
 
 
-# Predefined UUIDs for consistent seeding
+# === ПРЕДОПРЕДЕЛЁННЫЕ UUID ДЛЯ КОНСИСТЕНТНОСТИ ===
+# Фиксированные ID позволяют перезапускать seed без дублирования
 ROLE_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 ROLE_EXECUTOR_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
 ROLE_MANAGER_ID = uuid.UUID("00000000-0000-0000-0000-000000000003")
@@ -33,26 +41,27 @@ DEPT_SUPPORT_ID = uuid.UUID("30000000-0000-0000-0000-000000000003")
 
 ADMIN_USER_ID = uuid.UUID("40000000-0000-0000-0000-000000000001")
 
-# Pre-hashed password for "admin123" using bcrypt
+# Хеш пароля "admin123" (bcrypt)
 ADMIN_PASSWORD_HASH = "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYA/7.J6Ll8q"
 
 
 async def init_db():
-    """Create all tables"""
+    """Создаёт все таблицы в БД на основе моделей."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
 
 async def seed_data():
-    """Seed database with initial data"""
+    """Заполняет БД начальными данными (только если БД пустая)."""
     async with async_session() as session:
-        # Check if already seeded
+        # Проверка: если уже есть данные, пропускаем
         result = await session.execute(select(Role))
         if result.scalar_one_or_none():
             print("Database already seeded, skipping...")
             return
 
-        # === ROLES ===
+        # === РОЛИ ===
+        # 4 роли: User, Executor, Manager, Admin
         roles = [
             Role(id=ROLE_USER_ID, name="User", description="Обычный пользователь"),
             Role(id=ROLE_EXECUTOR_ID, name="Executor", description="Исполнитель инцидентов"),
@@ -62,7 +71,8 @@ async def seed_data():
         session.add_all(roles)
         await session.flush()
 
-        # === STATUSES ===
+        # === СТАТУСЫ ===
+        # 5 статусов жизненного цикла инцидента
         statuses = [
             Status(id=STATUS_NEW_ID, name="Новый", color="#3B82F6"),
             Status(id=STATUS_ASSIGNED_ID, name="Назначен", color="#8B5CF6"),
@@ -73,7 +83,8 @@ async def seed_data():
         session.add_all(statuses)
         await session.flush()
 
-        # === PRIORITIES ===
+        # === ПРИОРИТЕТЫ ===
+        # 4 уровня приоритета с цветовой индикацией
         priorities = [
             Priority(id=PRIORITY_LOW_ID, name="Низкий", level=1, color="#6B7280"),
             Priority(id=PRIORITY_MEDIUM_ID, name="Средний", level=2, color="#3B82F6"),
@@ -83,7 +94,8 @@ async def seed_data():
         session.add_all(priorities)
         await session.flush()
 
-        # === DEPARTMENTS ===
+        # === ОТДЕЛЫ ===
+        # 3 отдела по умолчанию
         departments = [
             Department(id=DEPT_IT_ID, name="IT отдел", description="Техническая поддержка"),
             Department(id=DEPT_HR_ID, name="HR отдел", description="Управление персоналом"),
@@ -92,7 +104,8 @@ async def seed_data():
         session.add_all(departments)
         await session.flush()
 
-        # === CATEGORIES ===
+        # === КАТЕГОРИИ ИНЦИДЕНТОВ ===
+        # 5 категорий для классификации инцидентов
         categories = [
             Category(id=uuid.uuid4(), name="Техническая проблема", description="Проблемы с оборудованием или ПО", is_active=True),
             Category(id=uuid.uuid4(), name="Доступ и учётные записи", description="Проблемы с доступом, паролями", is_active=True),
@@ -103,16 +116,20 @@ async def seed_data():
         session.add_all(categories)
         await session.flush()
 
-        # === SLA POLICIES ===
+        # === SLA-ПОЛИТИКИ ===
+        # Время решения для каждого приоритета (в рабочих часах)
         sla_policies = [
-                SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_LOW_ID, resolution_hours=80, description="Низкий приоритет - 10 рабочих дней (2 недели)"),
-                SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_MEDIUM_ID, resolution_hours=40, description="Средний приоритет - 5 рабочих дней (неделя)"),
-                SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_HIGH_ID, resolution_hours=16, description="Высокий приоритет - 2 рабочих дня"),
-                SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_CRITICAL_ID, resolution_hours=4, description="Критический приоритет - 4 рабочих часа"),        ]
+            SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_LOW_ID, resolution_hours=80, description="Низкий приоритет - 10 рабочих дней (2 недели)"),
+            SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_MEDIUM_ID, resolution_hours=40, description="Средний приоритет - 5 рабочих дней (неделя)"),
+            SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_HIGH_ID, resolution_hours=16, description="Высокий приоритет - 2 рабочих дня"),
+            SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_CRITICAL_ID, resolution_hours=4, description="Критический приоритет - 4 рабочих часа"),
+        ]
         session.add_all(sla_policies)
         await session.flush()
 
-        # === ESCALATION RULES ===
+        # === ПРАВИЛА ЭСКАЛАЦИИ ===
+        # L1: 80% SLA → уведомление Manager'а
+        # L2: просрочка → уведомление Admin'а
         escalation_rules = [
             EscalationRule(id=uuid.uuid4(), level=1, notify_role_id=ROLE_MANAGER_ID, condition_type="percent_80", is_active=True),
             EscalationRule(id=uuid.uuid4(), level=2, notify_role_id=ROLE_ADMIN_ID, condition_type="overdue", is_active=True),
@@ -120,7 +137,8 @@ async def seed_data():
         session.add_all(escalation_rules)
         await session.flush()
 
-        # === ADMIN USER ===
+        # === АДМИНИСТРАТОР ===
+        # Учётная запись по умолчанию: admin@example.com / admin123
         admin_user = User(
             id=ADMIN_USER_ID,
             email="admin@example.com",
@@ -133,7 +151,8 @@ async def seed_data():
         session.add(admin_user)
         await session.flush()
 
-        # === NOTIFICATION SETTINGS FOR ADMIN ===
+        # === НАСТРОЙКИ УВЕДОМЛЕНИЙ ДЛЯ АДМИНА ===
+        # Все уведомления включены по умолчанию
         all_enabled = {"internal": True, "email": True}
         notif_settings = NotificationSettings(
             id=uuid.uuid4(),
@@ -155,6 +174,7 @@ async def seed_data():
 
 
 async def main():
+    """Точка входа для инициализации БД."""
     print("Initializing database...")
     await init_db()
     print("Seeding data...")

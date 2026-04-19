@@ -1,5 +1,13 @@
 """
-Internal notifications
+API внутренних уведомлений (колокольчик) и настроек уведомлений.
+
+Endpoint'ы:
+- GET /notifications — список уведомлений пользователя
+- POST /notifications — создать уведомление (из Celery-задач)
+- POST /notifications/{id}/read — пометить как прочитанное
+- POST /notifications/read-all — прочитать все уведомления
+- GET /notifications/settings/{user_id} — настройки уведомлений
+- PUT /notifications/settings/{user_id} — обновить настройки
 """
 import uuid
 from typing import List
@@ -21,6 +29,14 @@ async def list_notifications(
     limit: int = 50,
     db: AsyncSession = Depends(get_db)
 ):
+    """
+    Список уведомлений пользователя.
+    
+    Query params:
+    - user_id: ID пользователя (обязательно)
+    - unread_only: только непрочитанные (default: False)
+    - limit: максимум уведомлений (default: 50)
+    """
     query = select(Notification).where(Notification.user_id == uuid.UUID(user_id))
     
     if unread_only:
@@ -40,6 +56,11 @@ async def create_notification(
     message: str = "",
     db: AsyncSession = Depends(get_db)
 ):
+    """
+    Создание уведомления.
+    
+    Вызывается из Celery-задач при событиях системы.
+    """
     notification = Notification(
         user_id=uuid.UUID(user_id),
         incident_id=uuid.UUID(incident_id) if incident_id else None,
@@ -55,6 +76,7 @@ async def create_notification(
 
 @router.post("/{notif_id}/read")
 async def mark_read(notif_id: str, db: AsyncSession = Depends(get_db)):
+    """Пометить уведомление как прочитанное."""
     result = await db.execute(select(Notification).where(Notification.id == notif_id))
     notif = result.scalar_one_or_none()
     if notif:
@@ -65,6 +87,7 @@ async def mark_read(notif_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("/read-all")
 async def mark_all_read(user_id: str, db: AsyncSession = Depends(get_db)):
+    """Пометить все уведомления пользователя как прочитанные."""
     result = await db.execute(
         select(Notification).where(
             Notification.user_id == uuid.UUID(user_id),
@@ -79,6 +102,7 @@ async def mark_all_read(user_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/settings/{user_id}")
 async def get_settings(user_id: str, db: AsyncSession = Depends(get_db)):
+    """Получить настройки уведомлений пользователя."""
     result = await db.execute(
         select(NotificationSettings).where(NotificationSettings.user_id == uuid.UUID(user_id))
     )
@@ -87,6 +111,12 @@ async def get_settings(user_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.put("/settings/{user_id}")
 async def update_settings(user_id: str, settings: dict, db: AsyncSession = Depends(get_db)):
+    """
+    Обновить настройки уведомлений.
+    
+    settings: dict с типами уведомлений и их статусом (вкл/выкл).
+    Пример: {"incident_created": {"internal": true, "email": false}}
+    """
     result = await db.execute(
         select(NotificationSettings).where(NotificationSettings.user_id == uuid.UUID(user_id))
     )
