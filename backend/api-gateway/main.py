@@ -16,6 +16,28 @@ import httpx
 
 from shared import settings
 
+# =============================================================================
+# RATE LIMITING - ЗАЩИТА ОТ BRUTE-FORCE АТАК
+# =============================================================================
+# Slowapi ограничивает количество запросов к критическим endpoints:
+# - /auth/login: 5 запросов в минуту (защита от подбора пароля)
+# - /auth/forgot-password: 3 запроса в час (защита от спама)
+# - /auth/reset-password: 5 запросов за 5 минут (защита от перебора токенов)
+#
+# Используется Redis для хранения счётчиков (распределённое хранение,
+# работает при масштабировании на несколько экземпляров Gateway).
+# =============================================================================
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+# Инициализация лимитера с Redis-backed хранилищем
+# key_func=get_remote_address — использует IP-адрес клиента для идентификации
+limiter = Limiter(
+    key_func=get_remote_address,
+    storage_uri=settings.REDIS_URL  # Redis URL из настроек
+)
+
 # Основное приложение FastAPI
 # title/description отображаются в Swagger UI (/docs)
 app = FastAPI(
@@ -23,6 +45,35 @@ app = FastAPI(
     version="1.0.0",
     description="API Gateway для микросервисной архитектуры",
 )
+
+# Подключаем limiter к приложению
+app.state.limiter = limiter
+
+# Обработчик исключения при превышении лимита
+# Возвращает понятное сообщение на русском языке со статусом 429
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    """
+    Глобальный обработчик превышения rate limit.
+    
+    Вызывается автоматически, когда клиент превышает установленный лимит запросов.
+    Возвращает JSON-ответ со статусом 429 Too Many Requests.
+    
+    Args:
+        request: Исходный HTTP-запрос
+        exc: Исключение RateLimitExceeded с информацией о лимите
+    
+    Returns:
+        JSONResponse: Ответ с сообщением об ошибке
+    """
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Слишком много запросов. Попробуйте позже."},
+        headers={"Retry-After": "60"}  # Подсказка клиенту, когда повторить
+    )
+
+# Добавляем стандартный обработчик slowapi
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Настройка CORS (Cross-Origin Resource Sharing)
 # Разрешает запросы с фронтенда (порт 5173) к бэкенду (порт 8000)
@@ -130,20 +181,88 @@ async def proxy_request(service: str, path: str, request: Request) -> Response:
 # - Управление отделами (departments)
 # - Загрузку аватарок
 
+# -----------------------------------------------------------------------------
+# RATE LIMITING ДЛЯ КРИТИЧЕСКИХ ENDPOINTS
+# -----------------------------------------------------------------------------
+# Применяем ограничения к endpoint'ам аутентификации для защиты от brute-force:
+# - login: 5 попыток в минуту (защита от подбора пароля)
+# - forgot-password: 3 запроса в час (защита от спама)
+# - reset-password: 5 попыток за 5 минут (защита от перебора токенов)
+# -----------------------------------------------------------------------------
+
+@app.post("/api/auth/login")
+@limiter.limit("5/minute")  # 5 попыток входа в минуту с одного IP
+async def proxy_auth_login(request: Request):
+    """
+    Проксирование запроса на вход с rate limiting.
+    
+    Защита от brute-force атак: после 5 неудачных попыток входа
+    в течение минуты дальнейшие запросы блокируются на 1 минуту.
+    
+    Лимит считается по IP-адресу клиента.
+    
+    Returns:
+        Response: Ответ от user-service или 429 Too Many Requests
+    """
+    return await proxy_request("user", "/auth/login", request)
+
+
+@app.post("/api/auth/forgot-password")
+@limiter.limit("3/hour")  # 3 запроса сброса пароля в час с одного IP
+async def proxy_auth_forgot_password(request: Request):
+    """
+    Проксирование запроса на сброс пароля с rate limiting.
+    
+    Защита от спама: не более 3 запросов на сброс пароля в час.
+    Это предотвращает массовую рассылку писем со ссылками для сброса.
+    
+    Лимит считается по IP-адресу клиента.
+    
+    Returns:
+        Response: Ответ от user-service или 429 Too Many Requests
+    """
+    return await proxy_request("user", "/auth/forgot-password", request)
+
+
+@app.post("/api/auth/reset-password")
+@limiter.limit("5/5minutes")  # 5 попыток установки пароля за 5 минут
+async def proxy_auth_reset_password(request: Request):
+    """
+    Проксирование запроса на установку нового пароля с rate limiting.
+    
+    Защита от перебора токенов: не более 5 попыток установки пароля
+    за 5 минут. Это предотвращает brute-force атаку на токен сброса.
+    
+    Лимит считается по IP-адресу клиента.
+    
+    Returns:
+        Response: Ответ от user-service или 429 Too Many Requests
+    """
+    return await proxy_request("user", "/auth/reset-password", request)
+
+
 @app.api_route("/api/auth/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_auth(path: str, request: Request):
     """
-    Проксирование всех запросов аутентификации.
+    Проксирование всех остальных запросов аутентификации.
+    
+    Этот маршрут обрабатывает все auth-запросы, кроме тех,
+    для которых определены отдельные обработчики выше:
+    - POST /login (обработан отдельно с rate limiting)
+    - POST /forgot-password (обработан отдельно с rate limiting)
+    - POST /reset-password (обработан отдельно с rate limiting)
     
     Примеры маршрутов:
-    - POST /api/auth/login        - Вход пользователя
     - POST /api/auth/logout       - Выход из системы
     - POST /api/auth/refresh      - Обновление токена
     - GET  /api/auth/me           - Получение данных текущего пользователя
     
     Args:
-        path: Остаток пути после /api/auth/ (например, "login")
+        path: Остаток пути после /api/auth/ (например, "logout", "refresh")
         request: Исходный HTTP-запрос
+    
+    Returns:
+        Response: Ответ от user-service
     """
     return await proxy_request("user", f"/auth/{path}", request)
 
