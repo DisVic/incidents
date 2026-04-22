@@ -3,7 +3,7 @@
 """
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 
@@ -47,71 +47,36 @@ def decode_token(token: str, secret_key: str, algorithm: str = "HS256") -> Optio
         return None
 
 
-# === Расчёт SLA с учётом рабочих часов (9:00-18:00, Пн-Пт) ===
+# === Расчёт SLA дедлайнов по приоритетам (календарные дни) ===
+
+# Стандартные дедлайны по приоритетам (в днях)
+PRIORITY_DEADLINES = {
+    "Низкий": 14,      # 14 дней
+    "Средний": 7,      # 7 дней
+    "Высокий": 3,      # 3 дня
+    "Критический": 1   # 1 день
+}
+
 
 def calculate_sla_deadline(
     created_at: datetime,
-    resolution_hours: int,
-    work_hour_start: int = 9,
-    work_hour_end: int = 18,
-    work_days: List[int] = None
+    resolution_days: int
 ) -> datetime:
     """
-    Рассчитывает дедлайн SLA с учётом только рабочих часов.
-    Выходные и праздники НЕ учитываются.
+    Рассчитывает дедлайн SLA путём добавления календарных дней.
+    Выходные и праздники учитываются (дедлайн сдвигается по календарю).
     
-    Пример: инцидент создан в Пт 17:00, SLA 4ч → дедлайн Пн 12:00
+    Пример: инцидент создан в Пт 17:00, SLA 3 дня → дедлайн Пн 17:00
     """
-    if work_days is None:
-        work_days = [0, 1, 2, 3, 4]  # Пн-Пт
-    
-    WORK_HOURS_PER_DAY = work_hour_end - work_hour_start  # 9 часов
-    remaining_hours = resolution_hours
-    current = created_at
-    
-    while remaining_hours > 0:
-        # Пропускаем выходные
-        if current.weekday() not in work_days:
-            days_to_add = 7 - current.weekday() if current.weekday() == 5 else 1
-            current = current + timedelta(days=days_to_add)
-            current = current.replace(hour=work_hour_start, minute=0, second=0, microsecond=0)
-            continue
-        
-        # Границы рабочего дня
-        work_day_start = current.replace(hour=work_hour_start, minute=0, second=0, microsecond=0)
-        work_day_end = current.replace(hour=work_hour_end, minute=0, second=0, microsecond=0)
-        
-        # Если сейчас до начала рабочего дня — сдвигаем на начало
-        if current < work_day_start:
-            current = work_day_start
-        
-        # Если после конца рабочего дня — сдвигаем на следующий рабочий день
-        if current >= work_day_end:
-            current = current + timedelta(days=1)
-            if current.weekday() not in work_days:
-                continue
-            current = current.replace(hour=work_hour_start, minute=0, second=0, microsecond=0)
-            continue
-        
-        # Сколько рабочих часов осталось сегодня
-        hours_left_today = (work_day_end - current).total_seconds() / 3600
-        
-        if remaining_hours <= hours_left_today:
-            # Дедлайн сегодня
-            deadline = current + timedelta(hours=remaining_hours)
-            if deadline.hour >= work_hour_end:
-                deadline = deadline.replace(hour=work_hour_end, minute=0, second=0, microsecond=0)
-            return deadline
-        else:
-            # Переходим на следующий рабочий день
-            remaining_hours -= hours_left_today
-            current = current + timedelta(days=1)
-            current = current.replace(hour=work_hour_start, minute=0, second=0, microsecond=0)
-            # Пропускаем выходные
-            while current.weekday() not in work_days:
-                current = current + timedelta(days=1)
-    
-    return current
+    return created_at + timedelta(days=resolution_days)
+
+
+def get_resolution_days_by_priority(priority_name: str) -> int:
+    """
+    Возвращает количество дней для решения по названию приоритета.
+    Если приоритет не найден, возвращает 7 дней (по умолчанию).
+    """
+    return PRIORITY_DEADLINES.get(priority_name, 7)
 
 
 def get_sla_percentage(created_at: datetime, deadline: datetime) -> float:

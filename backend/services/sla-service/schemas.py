@@ -13,7 +13,7 @@ from pydantic import BaseModel
 class SLAPolicyCreate(BaseModel):
     """Создание SLA-политики для приоритета."""
     priority_id: uuid.UUID
-    resolution_hours: int  # Время на решение в рабочих часах
+    resolution_days: int  # Время на решение в днях
     description: Optional[str] = None
 
 
@@ -21,7 +21,7 @@ class SLAPolicyResponse(BaseModel):
     """Данные SLA-политики для API-ответа."""
     id: uuid.UUID
     priority_id: uuid.UUID
-    resolution_hours: int
+    resolution_days: int
     description: Optional[str]
     
     class Config:
