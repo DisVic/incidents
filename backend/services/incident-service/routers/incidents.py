@@ -280,7 +280,7 @@ async def create_incident(data: IncidentCreate, db: AsyncSession = Depends(get_d
     created_at = datetime.utcnow()
     sla_deadline = calculate_sla_deadline(
         created_at,
-        sla_policy.resolution_hours if sla_policy else 24
+        sla_policy.resolution_days if sla_policy else 7
     )
     
     incident = Incident(
@@ -851,7 +851,7 @@ async def change_priority(
         if sla_policy:
             new_deadline = calculate_sla_deadline(
                 incident.created_at,
-                sla_policy.resolution_hours
+                sla_policy.resolution_days
             )
             incident.sla_deadline = new_deadline
             # Reset overdue flag if deadline was extended
