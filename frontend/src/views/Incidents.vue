@@ -1,19 +1,4 @@
 <script setup>
-/**
- * Список инцидентов с фильтрацией, сортировкой и пагинацией.
- * 
- * Функции:
- * - Фильтры: статус, приоритет, отдел (Admin), SLA-статус
- * - Сортировка: по дате, дедлайну, приоритету, заголовку
- * - Поиск по заголовку
- * - Удаление инцидентов (с проверкой прав)
- * 
- * Права доступа:
- * - Admin: видит все, фильтрует по отделу
- * - Manager: видит инциденты своего отдела
- * - Executor: видит инциденты своего отдела
- * - User: видит свои инциденты
- */
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
@@ -30,9 +15,9 @@ const page = ref(1)
 const limit = ref(20)
 const search = ref('')
 
-// Сортировка
+// Sorting
 const sortField = ref('created_at')
-const sortOrder = ref('desc') // 'asc' или 'desc'
+const sortOrder = ref('desc') // 'asc' or 'desc'
 
 const sortableFields = [
   { value: 'created_at', label: 'Дате создания' },
@@ -41,7 +26,7 @@ const sortableFields = [
   { value: 'title', label: 'Заголовку' }
 ]
 
-// Фильтры
+// Filters
 const filters = ref({
   status_id: null,
   priority_id: null,
@@ -49,22 +34,18 @@ const filters = ref({
   overdue: null
 })
 
-// Справочники
+// Reference data
 const statuses = ref([])
 const priorities = ref([])
 const departments = ref([])
 
 const pages = computed(() => Math.ceil(total.value / limit.value))
 
-// Admin может фильтровать по отделу, остальные — нет
+// Manager также не может фильтровать по отделу - видит только свой
 const canFilterByDepartment = computed(() => {
   return authStore.isAdmin
 })
 
-/**
- * Загрузка данных: инциденты + справочники.
- * Учитывает права доступа (отдел для non-Admin).
- */
 const loadData = async () => {
   loading.value = true
   try {
@@ -122,17 +103,11 @@ onMounted(() => {
   loadData()
 })
 
-/**
- * Применение фильтров (сброс на страницу 1).
- */
 const applyFilters = () => {
   page.value = 1
   loadData()
 }
 
-/**
- * Сброс всех фильтров и сортировки.
- */
 const clearFilters = () => {
   filters.value = {
     status_id: null,
@@ -148,10 +123,6 @@ const clearFilters = () => {
   loadData()
 }
 
-/**
- * Изменение сортировки (toggle asc/desc).
- * @param {string} field - Поле для сортировки
- */
 const toggleSort = (field) => {
   if (sortField.value === field) {
     sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
@@ -163,21 +134,11 @@ const toggleSort = (field) => {
   loadData()
 }
 
-/**
- * Иконка сортировки для заголовка столбца.
- * @param {string} field - Поле для проверки
- * @returns {string} ↕, ↑ или ↓
- */
 const getSortIcon = (field) => {
   if (sortField.value !== field) return '↕'
   return sortOrder.value === 'asc' ? '↑' : '↓'
 }
 
-/**
- * Форматирование даты (DD.MM.YYYY HH:MM).
- * @param {string|Date} date
- * @returns {string}
- */
 const formatDate = (date) => {
   return new Date(date).toLocaleString('ru-RU', {
     day: '2-digit',
@@ -197,19 +158,14 @@ const slaStatusOptions = [
 ]
 const slaStatus = ref(null)
 
-/**
- * Применение фильтра по SLA-статусу.
- */
 const applySlaFilter = () => {
+  // sla_status is now sent directly to API
   applyFilters()
 }
 
-// Опции размера страницы
+// Page size options
 const pageSizeOptions = [20, 50, 100]
 
-/**
- * Изменение размера страницы (сброс на страницу 1).
- */
 const changePageSize = () => {
   page.value = 1
   loadData()
@@ -220,52 +176,30 @@ const showDeleteModal = ref(false)
 const incidentToDelete = ref(null)
 const deleteLoading = ref(false)
 
-/**
- * Проверка прав на удаление инцидента.
- * 
- * Правила:
- * - Admin: может удалить любой
- * - Manager: только инциденты своего отдела
- * - User: только свои и только в статусе "Новый"
- * - Executor: не может удалять
- * 
- * @param {Object} incident - Данные инцидента
- * @returns {boolean}
- */
 const canDeleteIncident = (incident) => {
-
-const canDeleteIncident = (incident) => {
-  // Admin: любой инцидент
+  // Admin can delete any incident
   if (authStore.isAdmin) return true
   
-  // Manager: инциденты своего отдела
+  // Manager can delete incidents from their department
   if (authStore.isManager) {
     return authStore.user?.department_id === incident.department_id
   }
   
-  // User: только свои и статус "Новый"
+  // User can delete only incidents they created AND only if status is "Новый"
   if (authStore.user?.role_name === 'User') {
     return incident.initiator_id === authStore.user?.id && incident.status_name === 'Новый'
   }
   
-  // Executor: нельзя
+  // Executor cannot delete
   return false
 }
 
-/**
- * Подтверждение удаления (открытие модального окна).
- * @param {Object} incident
- * @param {Event} event
- */
 const confirmDelete = (incident, event) => {
   event.stopPropagation()
   incidentToDelete.value = incident
   showDeleteModal.value = true
 }
 
-/**
- * Удаление инцидента через API.
- */
 const deleteIncident = async () => {
   if (!incidentToDelete.value) return
   
@@ -292,7 +226,7 @@ const deleteIncident = async () => {
 
 <template>
   <div>
-    <!-- Заголовок + кнопка создания -->
+    <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-2xl font-bold text-slate-800">Инциденты</h1>
       <router-link
@@ -303,11 +237,11 @@ const deleteIncident = async () => {
       </router-link>
     </div>
     
-    <!-- Фильтры -->
+    <!-- Filters -->
     <div class="bg-white rounded-xl shadow-sm p-4 mb-6 border border-slate-200">
-      <!-- Строка 1: Основные фильтры -->
+      <!-- Row 1: Main filters -->
       <div class="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4">
-        <!-- Поиск -->
+        <!-- Search -->
         <div class="md:col-span-2">
           <input
             v-model="search"
@@ -318,7 +252,7 @@ const deleteIncident = async () => {
           />
         </div>
         
-        <!-- Статус -->
+        <!-- Status filter -->
         <select
           v-model="filters.status_id"
           class="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -328,7 +262,7 @@ const deleteIncident = async () => {
           <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
         
-        <!-- Приоритет -->
+        <!-- Priority filter -->
         <select
           v-model="filters.priority_id"
           class="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -338,7 +272,7 @@ const deleteIncident = async () => {
           <option v-for="p in priorities" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
         
-        <!-- Отдел (только Admin) -->
+        <!-- Department filter -->
         <select
           v-if="canFilterByDepartment"
           v-model="filters.department_id"
@@ -349,7 +283,7 @@ const deleteIncident = async () => {
           <option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</option>
         </select>
         
-        <!-- SLA-статус -->
+        <!-- SLA status filter -->
         <select
           v-model="slaStatus"
           class="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -359,9 +293,9 @@ const deleteIncident = async () => {
         </select>
       </div>
       
-      <!-- Строка 2: Действия -->
+      <!-- Row 2: Actions -->
       <div class="flex flex-wrap items-end gap-4">
-        <!-- Размер страницы -->
+        <!-- Page size -->
         <div>
           <label class="block text-xs text-slate-500 mb-1">На странице</label>
           <select
@@ -373,7 +307,7 @@ const deleteIncident = async () => {
           </select>
         </div>
         
-        <!-- Сброс фильтров -->
+        <!-- Clear button -->
         <button
           @click="clearFilters"
           class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
@@ -383,12 +317,12 @@ const deleteIncident = async () => {
       </div>
     </div>
     
-    <!-- Индикатор загрузки -->
+    <!-- Loading -->
     <div v-if="loading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>
     
-    <!-- Пустое состояние -->
+    <!-- Empty state -->
     <div v-else-if="!incidents.length" class="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
       <svg class="mx-auto h-12 w-12 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -405,12 +339,11 @@ const deleteIncident = async () => {
       </div>
     </div>
     
-    <!-- Таблица инцидентов -->
+    <!-- Table -->
     <div v-else class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       <table class="w-full">
         <thead class="bg-slate-50 border-b border-slate-200">
           <tr>
-            <!-- Сортируемые заголовки -->
             <th 
               class="px-4 py-3 text-left text-sm font-medium text-slate-600 cursor-pointer hover:bg-slate-100 select-none"
               @click="toggleSort('title')"
@@ -442,7 +375,6 @@ const deleteIncident = async () => {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-200">
-          <!-- Строка инцидента (клик = переход к деталям) -->
           <tr
             v-for="incident in incidents"
             :key="incident.id"
@@ -451,7 +383,6 @@ const deleteIncident = async () => {
           >
             <td class="px-4 py-3">
               <div class="flex items-center gap-2">
-                <!-- Индикатор просрочки (красный) или близкого дедлайна (жёлтый) -->
                 <span
                   v-if="incident.overdue && !['Решён', 'Закрыт'].includes(incident.status_name)"
                   class="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"
@@ -466,7 +397,6 @@ const deleteIncident = async () => {
               </div>
             </td>
             <td class="px-4 py-3">
-              <!-- Бейдж приоритета (цвет из БД) -->
               <span
                 class="px-2 py-1 rounded text-xs font-medium text-white"
                 :style="{ backgroundColor: incident.priority_color }"
@@ -475,7 +405,6 @@ const deleteIncident = async () => {
               </span>
             </td>
             <td class="px-4 py-3">
-              <!-- Бейдж статуса (цвет из БД) -->
               <span
                 class="px-2 py-1 rounded text-xs font-medium"
                 :style="{ backgroundColor: incident.status_color, color: '#fff' }"
@@ -485,7 +414,6 @@ const deleteIncident = async () => {
             </td>
             <td class="px-4 py-3 text-slate-600 text-sm">{{ incident.department_name }}</td>
             <td class="px-4 py-3">
-              <!-- Аватар исполнителя или инициалы -->
               <div v-if="incident.executor_name" class="flex items-center gap-2">
                 <div 
                   v-if="incident.executor_avatar"
@@ -503,7 +431,6 @@ const deleteIncident = async () => {
               <span v-else class="text-slate-400 text-sm">—</span>
             </td>
             <td class="px-4 py-3">
-              <!-- Дедлайн с индикатором просрочки -->
               <div class="flex items-center gap-1">
                 <span 
                   :class="[
@@ -530,7 +457,6 @@ const deleteIncident = async () => {
             </td>
             <td class="px-4 py-3 text-slate-600 text-sm">{{ formatDate(incident.created_at) }}</td>
             <td class="px-4 py-3">
-              <!-- Кнопка удаления (только с правами) -->
               <button
                 v-if="canDeleteIncident(incident)"
                 @click="confirmDelete(incident, $event)"
@@ -546,13 +472,12 @@ const deleteIncident = async () => {
         </tbody>
       </table>
       
-      <!-- Пагинация -->
+      <!-- Pagination -->
       <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between flex-wrap gap-4">
         <span class="text-sm text-slate-600">
           Показано {{ incidents.length }} из {{ total }}
         </span>
         <div class="flex items-center gap-2">
-          <!-- Кнопка "Назад" -->
           <button
             :disabled="page === 1"
             @click="page--; loadData()"
@@ -561,7 +486,7 @@ const deleteIncident = async () => {
             ← Назад
           </button>
           
-          <!-- Номера страниц -->
+          <!-- Page numbers -->
           <div class="flex gap-1">
             <button
               v-for="p in Math.min(pages, 5)"
@@ -591,7 +516,6 @@ const deleteIncident = async () => {
             </button>
           </div>
           
-          <!-- Кнопка "Вперёд" -->
           <button
             :disabled="page === pages"
             @click="page++; loadData()"
@@ -603,7 +527,7 @@ const deleteIncident = async () => {
       </div>
     </div>
     
-    <!-- Модальное окно подтверждения удаления -->
+    <!-- Delete confirmation modal -->
     <div v-if="showDeleteModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
         <h3 class="text-lg font-semibold text-slate-800 mb-4">Подтверждение удаления</h3>

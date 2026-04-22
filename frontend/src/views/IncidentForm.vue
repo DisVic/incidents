@@ -1,10 +1,4 @@
 <script setup>
-/**
- * Форма создания инцидента.
- * 
- * Поля: заголовок, описание, категория, приоритет, отдел.
- * Валидация: клиентская + серверная (с переводом ошибок на русский).
- */
 import { ref, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
@@ -34,9 +28,7 @@ const errors = reactive({
   department_id: ''
 })
 
-/**
- * Перевод ошибок валидации на русский язык.
- */
+// Перевод ошибок на русский
 const translateError = (error) => {
   const translations = {
     'string_too_short': 'Слишком короткое значение',
@@ -76,9 +68,7 @@ const translateError = (error) => {
   return error.msg || 'Ошибка валидации'
 }
 
-/**
- * Парсинг ошибок от backend и заполнение поля errors.
- */
+// Парсинг ошибок от backend
 const parseBackendErrors = (errorData) => {
   // Очищаем предыдущие ошибки
   Object.keys(errors).forEach(key => errors[key] = '')
@@ -99,9 +89,7 @@ const parseBackendErrors = (errorData) => {
   }
 }
 
-/**
- * Клиентская валидация формы.
- */
+// Клиентская валидация
 const validateForm = () => {
   let isValid = true
   Object.keys(errors).forEach(key => errors[key] = '')
@@ -154,9 +142,6 @@ onMounted(async () => {
   }
 })
 
-/**
- * Отправка формы: создание инцидента.
- */
 const handleSubmit = async () => {
   // Клиентская валидация
   if (!validateForm()) {
@@ -183,9 +168,9 @@ const handleSubmit = async () => {
   <div class="max-w-2xl mx-auto">
     <h1 class="text-2xl font-bold text-slate-800 mb-6">Создать инцидент</h1>
     
-    <!-- Форма -->
+    <!-- Form -->
     <form @submit.prevent="handleSubmit" class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
-      <!-- Заголовок -->
+      <!-- Title -->
       <div class="mb-4">
         <label class="block text-sm font-medium text-slate-700 mb-2">
           Заголовок <span class="text-red-500">*</span>
@@ -202,7 +187,7 @@ const handleSubmit = async () => {
         <p v-if="errors.title" class="mt-1 text-sm text-red-600">{{ errors.title }}</p>
       </div>
       
-      <!-- Описание -->
+      <!-- Description -->
       <div class="mb-4">
         <label class="block text-sm font-medium text-slate-700 mb-2">
           Описание <span class="text-red-500">*</span>
@@ -219,7 +204,7 @@ const handleSubmit = async () => {
         <p v-if="errors.description" class="mt-1 text-sm text-red-600">{{ errors.description }}</p>
       </div>
       
-      <!-- Категория -->
+      <!-- Category -->
       <div class="mb-4">
         <label class="block text-sm font-medium text-slate-700 mb-2">
           Категория <span class="text-red-500">*</span>
@@ -237,7 +222,7 @@ const handleSubmit = async () => {
         <p v-if="errors.category_id" class="mt-1 text-sm text-red-600">{{ errors.category_id }}</p>
       </div>
       
-      <!-- Приоритет -->
+      <!-- Priority -->
       <div class="mb-4">
         <label class="block text-sm font-medium text-slate-700 mb-2">
           Приоритет <span class="text-red-500">*</span>
@@ -255,7 +240,7 @@ const handleSubmit = async () => {
         <p v-if="errors.priority_id" class="mt-1 text-sm text-red-600">{{ errors.priority_id }}</p>
       </div>
       
-      <!-- Отдел -->
+      <!-- Department -->
       <div class="mb-6">
         <label class="block text-sm font-medium text-slate-700 mb-2">
           Отдел-исполнитель <span class="text-red-500">*</span>
@@ -273,7 +258,7 @@ const handleSubmit = async () => {
         <p v-if="errors.department_id" class="mt-1 text-sm text-red-600">{{ errors.department_id }}</p>
       </div>
       
-      <!-- Кнопки -->
+      <!-- Actions -->
       <div class="flex gap-4">
         <button
           type="submit"

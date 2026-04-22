@@ -1,14 +1,4 @@
 <script setup>
-/**
- * Управление пользователями: список, фильтры, создание, редактирование, блокировка.
- * 
- * Функции:
- * - Фильтры: отдел, роль
- * - Сортировка: по имени, дате создания
- * - CRUD: создание, редактирование, удаление
- * - Блокировка/активация пользователя
- * - Переход к статистике исполнителя
- */
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
@@ -44,9 +34,6 @@ const roleFilter = ref('')
 const sortField = ref('full_name') // full_name, created_at
 const sortOrder = ref('asc') // asc, desc
 
-/**
- * Отфильтрованный и отсортированный список пользователей.
- */
 const filteredUsers = computed(() => {
   let result = [...users.value]
   
@@ -82,9 +69,6 @@ const filteredUsers = computed(() => {
   return result
 })
 
-/**
- * Сброс фильтров и сортировки.
- */
 function clearFilters() {
   departmentFilter.value = ''
   roleFilter.value = ''
@@ -103,9 +87,6 @@ onMounted(async () => {
   loading.value = false
 })
 
-/**
- * Загрузка данных справочников.
- */
 async function loadUsers() {
   try {
     const res = await axios.get('/api/users')
@@ -133,9 +114,6 @@ async function loadDepartments() {
   }
 }
 
-/**
- * Открытие модального окна создания.
- */
 function openCreateModal() {
   modalMode.value = 'create'
   editingUserId.value = null
@@ -150,9 +128,6 @@ function openCreateModal() {
   showModal.value = true
 }
 
-/**
- * Открытие модального окна редактирования.
- */
 function openEditModal(user) {
   modalMode.value = 'edit'
   editingUserId.value = user.id
@@ -172,9 +147,6 @@ function closeModal() {
   formErrors.value = {}
 }
 
-/**
- * Сохранение пользователя (создание или обновление).
- */
 async function saveUser() {
   formErrors.value = {}
   
@@ -236,9 +208,6 @@ async function saveUser() {
   }
 }
 
-/**
- * Блокировка/активация пользователя (Admin).
- */
 async function toggleActive(user) {
   const action = user.is_active ? 'заблокировать' : 'активировать'
   const confirmed = await confirm(`Вы уверены, что хотите ${action} пользователя "${user.full_name}"?`)
@@ -254,9 +223,6 @@ async function toggleActive(user) {
   }
 }
 
-/**
- * Удаление пользователя (Admin).
- */
 async function confirmDelete(user) {
   const confirmed = await confirm(
     `Вы уверены, что хотите УДАЛИТЬ пользователя "${user.full_name}"?\n\nЭто действие нельзя отменить.`,
@@ -274,9 +240,6 @@ async function confirmDelete(user) {
   }
 }
 
-/**
- * CSS-класс для бейджа роли.
- */
 function getRoleColor(role) {
   const colors = {
     'Admin': 'bg-red-100 text-red-700',
@@ -287,9 +250,6 @@ function getRoleColor(role) {
   return colors[role] || 'bg-gray-100 text-gray-700'
 }
 
-/**
- * Форматирование даты (DD.MM.YYYY).
- */
 function formatDate(dateStr) {
   if (!dateStr) return '—'
   const date = new Date(dateStr)
@@ -300,9 +260,6 @@ function formatDate(dateStr) {
   })
 }
 
-/**
- * Переход к статистике исполнителя.
- */
 function goToUserStats(user) {
   if (['Executor', 'Manager', 'Admin'].includes(user.role_name)) {
     router.push(`/users/${user.id}/stats`)
@@ -312,7 +269,7 @@ function goToUserStats(user) {
 
 <template>
   <div class="max-w-7xl mx-auto px-4 py-6">
-    <!-- Заголовок + кнопка добавления -->
+    <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-2xl font-bold text-slate-800">Пользователи</h1>
       <button
@@ -326,10 +283,10 @@ function goToUserStats(user) {
       </button>
     </div>
     
-    <!-- Фильтры и сортировка -->
+    <!-- Filters -->
     <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-4">
       <div class="flex flex-wrap items-center gap-4">
-        <!-- Фильтр по отделу -->
+        <!-- Department filter -->
         <div class="flex items-center gap-2">
           <label class="text-sm text-slate-600">Отдел:</label>
           <select
@@ -341,7 +298,7 @@ function goToUserStats(user) {
           </select>
         </div>
         
-        <!-- Фильтр по роли -->
+        <!-- Role filter -->
         <div class="flex items-center gap-2">
           <label class="text-sm text-slate-600">Роль:</label>
           <select
@@ -353,7 +310,7 @@ function goToUserStats(user) {
           </select>
         </div>
         
-        <!-- Сортировка -->
+        <!-- Sort field -->
         <div class="flex items-center gap-2">
           <label class="text-sm text-slate-600">Сортировка:</label>
           <select
@@ -363,7 +320,6 @@ function goToUserStats(user) {
             <option value="full_name">По имени</option>
             <option value="created_at">По дате создания</option>
           </select>
-          <!-- Порядок сортировки -->
           <button
             @click="sortOrder = sortOrder === 'asc' ? 'desc' : 'asc'"
             class="px-2 py-1.5 border border-slate-300 rounded-lg text-sm hover:bg-slate-50 transition-colors flex items-center gap-1"
@@ -379,7 +335,7 @@ function goToUserStats(user) {
           </button>
         </div>
         
-        <!-- Сброс фильтров -->
+        <!-- Clear filters -->
         <button
           v-if="departmentFilter || roleFilter || sortField !== 'full_name' || sortOrder !== 'asc'"
           @click="clearFilters"
@@ -388,19 +344,19 @@ function goToUserStats(user) {
           Сбросить
         </button>
         
-        <!-- Количество -->
+        <!-- Count -->
         <div class="ml-auto text-sm text-slate-500">
           Найдено: {{ filteredUsers.length }} из {{ users.length }}
         </div>
       </div>
     </div>
     
-    <!-- Загрузка -->
+    <!-- Loading -->
     <div v-if="loading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
     </div>
     
-    <!-- Таблица пользователей -->
+    <!-- Users table -->
     <div v-else-if="filteredUsers.length > 0" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       <table class="w-full">
         <thead class="bg-slate-50 border-b border-slate-200">
@@ -414,7 +370,6 @@ function goToUserStats(user) {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-200">
-          <!-- Строка пользователя (клик = переход к статистике для Executor/Manager/Admin) -->
           <tr 
             v-for="user in filteredUsers" 
             :key="user.id" 
@@ -423,7 +378,6 @@ function goToUserStats(user) {
             @click="goToUserStats(user)"
           >
             <td class="px-4 py-3">
-              <!-- Аватар + ФИО -->
               <div class="flex items-center gap-3">
                 <div
                   v-if="user.avatar"
@@ -444,22 +398,18 @@ function goToUserStats(user) {
             </td>
             <td class="px-4 py-3 text-slate-600">{{ user.email }}</td>
             <td class="px-4 py-3">
-              <!-- Бейдж роли -->
               <span :class="['px-2 py-1 rounded text-xs font-medium', getRoleColor(user.role_name)]">
                 {{ user.role_name }}
               </span>
             </td>
             <td class="px-4 py-3 text-slate-600">{{ user.department_name || '—' }}</td>
             <td class="px-4 py-3">
-              <!-- Бейдж статуса -->
               <span :class="['px-2 py-1 rounded text-xs font-medium', user.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700']">
                 {{ user.is_active ? 'Активен' : 'Заблокирован' }}
               </span>
             </td>
             <td class="px-4 py-3" @click.stop>
-              <!-- Кнопки действий -->
               <div class="flex items-center justify-end gap-2">
-                <!-- Редактировать -->
                 <button
                   @click="openEditModal(user)"
                   class="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -469,7 +419,6 @@ function goToUserStats(user) {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                   </svg>
                 </button>
-                <!-- Блокировать/Активировать (Admin) -->
                 <button
                   v-if="authStore.isAdmin"
                   @click="toggleActive(user)"
@@ -483,7 +432,6 @@ function goToUserStats(user) {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
                   </svg>
                 </button>
-                <!-- Удалить (Admin) -->
                 <button
                   v-if="authStore.isAdmin"
                   @click="confirmDelete(user)"
@@ -504,7 +452,7 @@ function goToUserStats(user) {
       Нет пользователей
     </div>
     
-    <!-- Модальное окно: Создание/Редактирование -->
+    <!-- Modal -->
     <div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @click.self="closeModal">
       <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
         <div class="p-6 border-b border-slate-200">
@@ -524,7 +472,7 @@ function goToUserStats(user) {
             <p v-if="formErrors.email" class="text-red-500 text-sm mt-1">{{ formErrors.email }}</p>
           </div>
           
-          <!-- ФИО -->
+          <!-- Full Name -->
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">ФИО *</label>
             <input
@@ -536,7 +484,7 @@ function goToUserStats(user) {
             <p v-if="formErrors.full_name" class="text-red-500 text-sm mt-1">{{ formErrors.full_name }}</p>
           </div>
           
-          <!-- Роль -->
+          <!-- Role -->
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">Роль *</label>
             <select
@@ -550,7 +498,7 @@ function goToUserStats(user) {
             <p v-if="formErrors.role_id" class="text-red-500 text-sm mt-1">{{ formErrors.role_id }}</p>
           </div>
           
-          <!-- Отдел -->
+          <!-- Department -->
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">Отдел</label>
             <select
@@ -562,7 +510,7 @@ function goToUserStats(user) {
             </select>
           </div>
           
-          <!-- Пароль (только создание) -->
+          <!-- Password (create only) -->
           <div v-if="modalMode === 'create'">
             <label class="block text-sm font-medium text-slate-700 mb-1">Пароль *</label>
             <input
@@ -574,7 +522,7 @@ function goToUserStats(user) {
             <p v-if="formErrors.password" class="text-red-500 text-sm mt-1">{{ formErrors.password }}</p>
           </div>
           
-          <!-- Кнопки -->
+          <!-- Actions -->
           <div class="flex justify-end gap-3 pt-4">
             <button
               type="button"

@@ -1,22 +1,8 @@
 <script setup>
-/**
- * Глобальное модальное окно (alert/confirm/prompt).
- * 
- * Работает в паре с composable useModal.
- * Поддерживает:
- * - Alert: только кнопка OK
- * - Confirm: кнопки Отмена/Подтвердить
- * - Prompt: input для ввода текста + кнопки
- * 
- * Закрытие по Esc или клику на backdrop.
- */
 import { useModal } from '@/composables/useModal'
 
 const { modalState, close, cancel } = useModal()
 
-/**
- * Обработка подтверждения (Enter или кнопка).
- */
 const handleConfirm = () => {
   if (modalState.value.type === 'prompt') {
     close(modalState.value.inputValue)
@@ -25,10 +11,6 @@ const handleConfirm = () => {
   }
 }
 
-/**
- * Обработка клавиш (Esc/Enter).
- * @param {KeyboardEvent} e
- */
 const handleKeydown = (e) => {
   if (e.key === 'Escape') {
     cancel()
@@ -39,7 +21,6 @@ const handleKeydown = (e) => {
 </script>
 
 <template>
-  <!-- Teleport рендерит модалку вне #app (в body) -->
   <Teleport to="body">
     <Transition name="fade">
       <div
@@ -47,32 +28,33 @@ const handleKeydown = (e) => {
         class="fixed inset-0 z-50 flex items-center justify-center p-4"
         @keydown="handleKeydown"
       >
-        <!-- Затемнение фона (клик = отмена) -->
+        <!-- Backdrop -->
         <div
           class="absolute inset-0 bg-black/50 backdrop-blur-sm"
           @click="cancel"
         ></div>
         
-        <!-- Модальное окно -->
+        <!-- Modal -->
         <div
           class="relative bg-white rounded-xl shadow-2xl w-full max-w-md transform transition-all"
           role="dialog"
           aria-modal="true"
         >
-          <!-- Заголовок -->
+          <!-- Header -->
           <div class="px-6 pt-6 pb-2">
             <h3 class="text-lg font-semibold text-slate-800">
               {{ modalState.title }}
             </h3>
           </div>
           
-          <!-- Тело: сообщение + input для prompt -->
+          <!-- Body -->
           <div class="px-6 py-4">
+            <!-- Message -->
             <p v-if="modalState.message" class="text-slate-600 mb-4">
               {{ modalState.message }}
             </p>
             
-            <!-- Input для prompt -->
+            <!-- Input for prompt -->
             <input
               v-if="modalState.type === 'prompt'"
               v-model="modalState.inputValue"
@@ -85,7 +67,7 @@ const handleKeydown = (e) => {
             />
           </div>
           
-          <!-- Кнопки: Отмена + Подтвердить -->
+          <!-- Footer -->
           <div class="px-6 py-4 bg-slate-50 rounded-b-xl flex gap-3 justify-end">
             <button
               v-if="modalState.type !== 'alert'"

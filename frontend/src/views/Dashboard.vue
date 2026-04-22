@@ -1,15 +1,4 @@
 <script setup>
-/**
- * Дашборд — статистика инцидентов, SLA, графики, топ исполнителей.
- * 
- * Функции:
- * - Фильтры: период (месяц/квартал/год), отдел (Admin)
- * - Карточки статистики (всего, новые, в работе, решённые, просроченные)
- * - SLA-статистика (соблюдён/близко/просрочен)
- * - График активности (14 дней)
- * - Топ исполнителей (30 дней)
- * - Детализация (accordion): исполнители, отделы, SLA, просрочки
- */
 import { ref, onMounted, computed, watch } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
@@ -18,11 +7,11 @@ const authStore = useAuthStore()
 
 const loading = ref(true)
 
-// === Фильтры ===
-const departmentId = ref('')  // Фильтр по отделу (только Admin)
+// Filters
+const departmentId = ref('')
 const departments = ref([])
 
-// Период отчёта
+// Period filter
 const period = ref('current_month')
 const periods = [
   { value: 'current_month', label: 'Текущий месяц' },
@@ -34,12 +23,10 @@ const periods = [
 const customDateFrom = ref('')
 const customDateTo = ref('')
 
-// Admin может фильтровать по отделу
+// Can filter by department (only Admin)
 const canFilterByDepartment = computed(() => authStore.isAdmin)
 
-/**
- * Вычисление диапазона дат из выбранного периода.
- */
+// Compute date range from period
 const dateRange = computed(() => {
   const now = new Date()
   let from, to
@@ -170,9 +157,6 @@ function resetAccordions() {
   overdueIncidents.value = []
 }
 
-/**
- * Загрузка данных дашборда (основная статистика + графики).
- */
 async function loadDashboard() {
   loading.value = true
   try {
@@ -210,9 +194,7 @@ async function loadDashboard() {
   }
 }
 
-/**
- * Загрузка детальных данных для accordion-секций.
- */
+// Load detailed data for accordion
 async function loadExecutorsData() {
   if (executorsData.value.length > 0) return
   try {
@@ -232,9 +214,6 @@ async function loadExecutorsData() {
   }
 }
 
-/**
- * Загрузка статистики по отделам.
- */
 async function loadDepartmentsData() {
   if (departmentsData.value.length > 0) return
   try {
@@ -250,9 +229,6 @@ async function loadDepartmentsData() {
   }
 }
 
-/**
- * Загрузка SLA-аналитики.
- */
 async function loadSLAData() {
   if (slaData.value.total_incidents) return
   try {
@@ -268,9 +244,6 @@ async function loadSLAData() {
   }
 }
 
-/**
- * Загрузка списка просроченных инцидентов.
- */
 async function loadOverdueIncidents() {
   if (overdueIncidents.value.length > 0) return
   try {
@@ -287,9 +260,6 @@ async function loadOverdueIncidents() {
   }
 }
 
-/**
- * Переключение accordion-секций (только одна открыта одновременно).
- */
 function toggleExecutors() {
   showExecutors.value = !showExecutors.value
   if (showExecutors.value) {
@@ -353,9 +323,6 @@ const activityMax = computed(() => Math.max(...activityData.value.map(d => d.cou
 // Top executor max for chart
 const topExecutorMax = computed(() => Math.max(...topExecutors.value.map(e => e.resolved_count), 1))
 
-/**
- * Вспомогательные функции форматирования.
- */
 function formatDate(dateStr) {
   if (!dateStr) return ''
   const date = new Date(dateStr)
@@ -368,9 +335,6 @@ function formatDateTime(dateStr) {
   return date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-/**
- * Форматирование часов в дни + часы.
- */
 function formatHours(hours) {
   if (!hours) return '—'
   if (hours < 24) return `${hours.toFixed(1)} ч`
@@ -379,9 +343,6 @@ function formatHours(hours) {
   return `${days} д ${h} ч`
 }
 
-/**
- * CSS-класс для бейджа статуса.
- */
 function getStatusBadgeClass(statusName) {
   const statusColors = {
     'Новый': 'bg-blue-100 text-blue-800',
@@ -396,11 +357,11 @@ function getStatusBadgeClass(statusName) {
 
 <template>
   <div>
-    <!-- Заголовок + фильтры (период, отдел) -->
+    <!-- Header with filters and export -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
       <h1 class="text-2xl font-bold text-slate-800">Дашборд</h1>
       <div class="flex flex-wrap items-center gap-3">
-        <!-- Период -->
+        <!-- Period filter -->
         <div class="flex items-center gap-2">
           <label class="text-sm text-slate-600">Период:</label>
           <select v-model="period"
@@ -408,7 +369,7 @@ function getStatusBadgeClass(statusName) {
             <option v-for="p in periods" :key="p.value" :value="p.value">{{ p.label }}</option>
           </select>
         </div>
-        <!-- Кастомные даты -->
+        <!-- Custom date inputs -->
         <div v-if="period === 'custom'" class="flex items-center gap-2">
           <input type="date" v-model="customDateFrom"
                  class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
@@ -416,7 +377,7 @@ function getStatusBadgeClass(statusName) {
           <input type="date" v-model="customDateTo"
                  class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
         </div>
-        <!-- Отдел (Admin) -->
+        <!-- Department filter (admin only) -->
         <div v-if="canFilterByDepartment" class="flex items-center gap-2">
           <label class="text-sm text-slate-600">Отдел:</label>
           <select v-model="departmentId"
@@ -430,13 +391,13 @@ function getStatusBadgeClass(statusName) {
       </div>
     </div>
     
-    <!-- Загрузка -->
+    <!-- Loading -->
     <div v-if="loading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>
     
     <template v-else-if="stats">
-      <!-- Карточки статистики -->
+      <!-- Main stats cards -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <div
           v-for="card in statCards"
@@ -444,7 +405,6 @@ function getStatusBadgeClass(statusName) {
           class="bg-white rounded-xl shadow-sm p-5 border border-slate-200 hover:shadow-md transition-shadow"
         >
           <div class="flex items-center gap-4">
-            <!-- Иконка -->
             <div :class="[colorBgLight[card.color], 'p-3 rounded-lg']">
               <svg class="w-6 h-6" :class="colorText[card.color]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="card.icon" />
@@ -458,13 +418,13 @@ function getStatusBadgeClass(statusName) {
         </div>
       </div>
       
-      <!-- Графики (3 колонки) -->
+      <!-- Charts row -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <!-- SLA-статистика -->
+        <!-- SLA Statistics -->
         <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
           <h2 class="text-lg font-semibold text-slate-800 mb-4">SLA-статистика</h2>
           
-          <!-- Прогресс-бары -->
+          <!-- Progress bars -->
           <div class="space-y-4">
             <div>
               <div class="flex justify-between text-sm mb-1">
@@ -497,7 +457,7 @@ function getStatusBadgeClass(statusName) {
             </div>
           </div>
           
-          <!-- Круговая диаграмма -->
+          <!-- Donut chart visualization -->
           <div class="mt-6 flex justify-center">
             <div class="relative w-32 h-32">
               <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
@@ -522,7 +482,7 @@ function getStatusBadgeClass(statusName) {
           </div>
         </div>
         
-        <!-- Распределение по статусам -->
+        <!-- Status distribution -->
         <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
           <h2 class="text-lg font-semibold text-slate-800 mb-4">По статусам</h2>
           
@@ -533,7 +493,6 @@ function getStatusBadgeClass(statusName) {
                   <span class="text-slate-600">{{ status.name }}</span>
                   <span class="font-medium text-slate-800">{{ status.count }}</span>
                 </div>
-                <!-- Прогресс-бар -->
                 <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
                   <div 
                     class="h-full rounded-full transition-all duration-500"
@@ -555,7 +514,7 @@ function getStatusBadgeClass(statusName) {
           </div>
         </div>
         
-        <!-- Общая статистика -->
+        <!-- Incident statistics -->
         <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
           <h2 class="text-lg font-semibold text-slate-800 mb-4">Статистика инцидентов</h2>
           
@@ -586,20 +545,18 @@ function getStatusBadgeClass(statusName) {
         </div>
       </div>
       
-      <!-- График активности + Топ исполнителей -->
+      <!-- Activity chart and top executors -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <!-- График активности (14 дней) -->
+        <!-- Activity chart -->
         <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
           <h2 class="text-lg font-semibold text-slate-800 mb-4">Созданные инциденты (14 дней)</h2>
           
           <div v-if="activityData.length > 0" class="h-48 flex">
-            <!-- Ось Y -->
             <div class="w-8 flex flex-col justify-between text-xs text-slate-400 pr-2 text-right">
               <span>{{ activityMax }}</span>
               <span>{{ Math.round(activityMax / 2) }}</span>
               <span>0</span>
             </div>
-            <!-- Столбцы -->
             <div class="flex-1 flex items-end gap-1 border-l border-b border-slate-200 pl-2 pb-6 relative">
               <div class="absolute inset-0 flex flex-col justify-between pointer-events-none pb-6">
                 <div class="border-t border-slate-100 w-full"></div>
@@ -621,13 +578,12 @@ function getStatusBadgeClass(statusName) {
           </div>
         </div>
         
-        <!-- Топ исполнителей (30 дней) -->
+        <!-- Top Executors -->
         <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
           <h2 class="text-lg font-semibold text-slate-800 mb-4">Топ исполнителей (30 дней)</h2>
           
           <div v-if="topExecutors.length > 0" class="space-y-3">
             <div v-for="(executor, index) in topExecutors" :key="executor.id" class="flex items-center gap-3">
-              <!-- Место (1, 2, 3) -->
               <div 
                 class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm"
                 :class="{
@@ -641,7 +597,6 @@ function getStatusBadgeClass(statusName) {
               </div>
               <div class="flex-1">
                 <p class="text-sm font-medium text-slate-700">{{ executor.full_name }}</p>
-                <!-- Прогресс-бар -->
                 <div class="h-2 bg-slate-100 rounded-full overflow-hidden mt-1">
                   <div 
                     class="h-full bg-green-500 rounded-full transition-all duration-300"
@@ -661,7 +616,7 @@ function getStatusBadgeClass(statusName) {
         </div>
       </div>
       
-      <!-- Последние инциденты -->
+      <!-- Recent incidents -->
       <div class="grid grid-cols-1 gap-6 mb-6">
         <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
           <div class="flex items-center justify-between mb-4">
@@ -697,9 +652,9 @@ function getStatusBadgeClass(statusName) {
         </div>
       </div>
       
-      <!-- Детализация (accordion) -->
+      <!-- Detail accordions -->
       <div class="space-y-3">
-        <!-- Исполнители -->
+        <!-- Executors accordion -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <button 
             @click="toggleExecutors"
@@ -757,7 +712,7 @@ function getStatusBadgeClass(statusName) {
           </div>
         </div>
         
-        <!-- Отделы (только Admin) -->
+        <!-- Departments accordion - Admin only -->
         <div v-if="authStore.isAdmin && !departmentId" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <button 
             @click="toggleDepartments"
@@ -807,7 +762,7 @@ function getStatusBadgeClass(statusName) {
           </div>
         </div>
         
-        <!-- SLA-аналитика -->
+        <!-- SLA Analytics accordion -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <button 
             @click="toggleSLA"
@@ -823,7 +778,7 @@ function getStatusBadgeClass(statusName) {
             </svg>
           </button>
           <div v-if="showSLA" class="border-t border-slate-200 p-4">
-            <!-- Сводные карточки -->
+            <!-- Summary cards -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <div class="bg-slate-50 rounded-lg p-4">
                 <p class="text-sm text-slate-500">Всего инцидентов</p>
@@ -845,7 +800,7 @@ function getStatusBadgeClass(statusName) {
               </div>
             </div>
             
-            <!-- Проблемные зоны -->
+            <!-- Problem zones -->
             <div class="bg-slate-50 rounded-lg p-4">
               <h4 class="text-sm font-semibold text-slate-700 mb-3">Проблемные зоны</h4>
               <div v-if="slaData.problem_zones && slaData.problem_zones.length > 0" class="space-y-2">
@@ -862,7 +817,7 @@ function getStatusBadgeClass(statusName) {
           </div>
         </div>
         
-        <!-- История просрочек -->
+        <!-- Overdue Incidents History accordion -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <button 
             @click="showOverdueHistory = !showOverdueHistory; if (showOverdueHistory) loadOverdueIncidents()"
@@ -919,7 +874,5 @@ function getStatusBadgeClass(statusName) {
         </div>
       </div>
     </template>
-  </div>
-</template>
   </div>
 </template>

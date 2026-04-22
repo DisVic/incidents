@@ -1,21 +1,7 @@
-/**
- * Vue Router — маршрутизация приложения.
- * 
- * Маршруты разделены на:
- * - Публичные (guest: true) — Login, ForgotPassword, ResetPassword
- * - Защищённые (requiresAuth: true) — все основные страницы
- * - С ограничениями по ролям (requiresAdmin, requiresManager)
- * 
- * Навигационный хук beforeEach проверяет:
- * 1. Инициализацию auth store
- * 2. Авторизацию для защищённых маршрутов
- * 3. Права доступа для админских/менеджерских страниц
- */
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const routes = [
-  // === Публичные страницы (без авторизации) ===
   {
     path: '/login',
     name: 'Login',
@@ -34,8 +20,6 @@ const routes = [
     component: () => import('@/views/ResetPassword.vue'),
     meta: { guest: true }
   },
-  
-  // === Защищённые страницы (требуют авторизацию) ===
   {
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
@@ -45,12 +29,12 @@ const routes = [
         path: '',
         name: 'Dashboard',
         component: () => import('@/views/Dashboard.vue'),
-        meta: { requiresManager: true }  // Только Manager и Admin (статистика)
+        meta: { requiresManager: true }
       },
       {
         path: 'incidents',
         name: 'Incidents',
-        component: () => import('@/views/Incidents.vue')  // Все роли
+        component: () => import('@/views/Incidents.vue')
       },
       {
         path: 'incidents/:id',
@@ -66,13 +50,13 @@ const routes = [
         path: 'users',
         name: 'Users',
         component: () => import('@/views/Users.vue'),
-        meta: { requiresAdmin: true }  // Только Admin
+        meta: { requiresAdmin: true }
       },
       {
         path: 'settings',
         name: 'Settings',
         component: () => import('@/views/Settings.vue'),
-        meta: { requiresAdmin: true }  // Только Admin
+        meta: { requiresAdmin: true }
       },
 
       {
@@ -105,22 +89,15 @@ const router = createRouter({
   routes
 })
 
-/**
- * Навигационный хук — проверка прав доступа перед переходом.
- * 
- * @param {Object} to - Целевой маршрут
- * @param {Object} from - Исходный маршрут
- * @param {Function} next - Функция продолжения навигации
- */
+// Navigation guards
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   
-  // Ждём инициализации auth (проверка токена в localStorage)
+  // Wait for auth initialization if not done yet
   if (!authStore.initialized) {
     await authStore.init()
   }
   
-  // Редирект на логин если не авторизован
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
   } else if (to.meta.guest && authStore.isAuthenticated) {

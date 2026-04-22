@@ -1,15 +1,4 @@
 <script setup>
-/**
- * Основной layout приложения с боковым меню.
- * 
- * Функции:
- * - Боковое меню с навигацией по ролям
- * - Счётчик непрочитанных уведомлений (polling каждые 5 сек)
- * - Звуковое уведомление при новых сообщениях
- * - Профиль пользователя с кнопкой выхода
- * 
- * Меню адаптируется: sidebarOpen = true/false (64px/16px)
- */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -23,9 +12,7 @@ const sidebarOpen = ref(true)
 const unreadCount = ref(0)
 let pollingInterval = null
 
-/**
- * Воспроизведение звукового сигнала через Web Audio API.
- */
+// Generate notification sound using Web Audio API
 const playNotificationSound = () => {
   try {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)()
@@ -48,10 +35,6 @@ const playNotificationSound = () => {
   }
 }
 
-/**
- * Загрузка количества непрочитанных уведомлений.
- * Запускается при монтировании и далее каждые 5 сек.
- */
 const fetchUnreadCount = async () => {
   if (!authStore.user?.id) return
   
@@ -87,11 +70,6 @@ onUnmounted(() => {
   }
 })
 
-/**
- * Пункты меню (формируются динамически по роли пользователя).
- * Manager/Admin: + Дашборд, Пользователи, Настройки
- * Все: Инциденты, Уведомления, Профиль
- */
 const menuItems = computed(() => {
   const items = []
   
@@ -113,9 +91,6 @@ const menuItems = computed(() => {
   return items
 })
 
-/**
- * Выход из системы: очистка auth store + редирект на login.
- */
 const handleLogout = () => {
   authStore.logout()
   router.push('/login')
@@ -124,18 +99,17 @@ const handleLogout = () => {
 
 <template>
   <div class="min-h-screen flex bg-gray-100">
-    <!-- Боковое меню (sidebar) -->
+    <!-- Sidebar -->
     <aside 
       :class="[
         'fixed inset-y-0 left-0 z-50 bg-slate-800 text-white transition-all duration-300',
         sidebarOpen ? 'w-64' : 'w-16'
       ]"
     >
-      <!-- Логотип -->
+      <!-- Logo -->
       <div class="h-16 flex items-center justify-between px-4 border-b border-slate-700">
         <span v-if="sidebarOpen" class="text-xl font-bold">IMS</span>
         <span v-else class="text-xl font-bold">I</span>
-        <!-- Кнопка сворачивания меню -->
         <button 
           @click="sidebarOpen = !sidebarOpen"
           class="p-2 rounded-lg hover:bg-slate-700"
@@ -146,7 +120,7 @@ const handleLogout = () => {
         </button>
       </div>
       
-      <!-- Навигация -->
+      <!-- Navigation -->
       <nav class="mt-4 px-2">
         <router-link
           v-for="item in menuItems"
@@ -156,12 +130,11 @@ const handleLogout = () => {
           exact-active-class="bg-primary-600 text-white"
         >
           <span class="w-5 h-5 flex items-center justify-center relative">
-            <!-- Иконка колокольчика с бейджем непрочитанных -->
+            <!-- Bell icon with badge -->
             <template v-if="item.icon === 'bell'">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
               </svg>
-              <!-- Бейдж: количество непрочитанных (макс 99+) -->
               <span 
                 v-if="unreadCount > 0" 
                 class="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1"
@@ -169,28 +142,28 @@ const handleLogout = () => {
                 {{ unreadCount > 99 ? '99+' : unreadCount }}
               </span>
             </template>
-            <!-- Иконка Dashboard -->
+            <!-- Dashboard icon -->
             <svg v-else-if="item.icon === 'dashboard'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
             </svg>
-            <!-- Иконка Incident -->
+            <!-- Incident icon -->
             <svg v-else-if="item.icon === 'incident'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
-            <!-- Иконка User -->
+            <!-- User icon -->
             <svg v-else-if="item.icon === 'user'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
-            <!-- Иконка Chart -->
+            <!-- Chart icon -->
             <svg v-else-if="item.icon === 'chart'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
 
-            <!-- Иконка Users -->
+            <!-- Users icon -->
             <svg v-else-if="item.icon === 'users'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
             </svg>
-            <!-- Иконка Settings -->
+            <!-- Settings icon -->
             <svg v-else-if="item.icon === 'settings'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -200,10 +173,9 @@ const handleLogout = () => {
         </router-link>
       </nav>
       
-      <!-- Профиль пользователя (внизу sidebar) -->
+      <!-- User info -->
       <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-700">
         <div class="flex items-center gap-3">
-          <!-- Аватар -->
           <div class="w-10 h-10 rounded-full bg-primary-500 flex items-center justify-center font-bold overflow-hidden">
             <img 
               v-if="authStore.user?.avatar" 
@@ -212,12 +184,10 @@ const handleLogout = () => {
               class="w-full h-full object-cover">
             <span v-else>{{ authStore.user?.full_name?.charAt(0)?.toUpperCase() || 'U' }}</span>
           </div>
-          <!-- Имя и роль -->
           <div v-if="sidebarOpen" class="flex-1 min-w-0">
             <p class="text-sm font-medium truncate">{{ authStore.user?.full_name }}</p>
             <p class="text-xs text-slate-400 truncate">{{ authStore.user?.role_name }}</p>
           </div>
-          <!-- Кнопка выхода -->
           <button 
             v-if="sidebarOpen"
             @click="handleLogout"
@@ -232,9 +202,9 @@ const handleLogout = () => {
       </div>
     </aside>
     
-    <!-- Основной контент -->
+    <!-- Main content -->
     <main :class="['flex-1 transition-all duration-300', sidebarOpen ? 'ml-64' : 'ml-16']">
-      <!-- Верхняя панель с заголовком -->
+      <!-- Header -->
       <div class="sticky top-0 z-40 bg-white border-b border-slate-200 px-6 py-3">
         <div class="flex items-center justify-between">
           <h1 class="text-lg font-semibold text-slate-800">
@@ -244,7 +214,6 @@ const handleLogout = () => {
       </div>
       
       <div class="p-6">
-        <!-- Роутер рендерит компонент текущего маршрута -->
         <router-view />
       </div>
     </main>
