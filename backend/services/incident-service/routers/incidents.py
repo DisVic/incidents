@@ -47,8 +47,18 @@ def incident_to_dict(incident: Incident) -> dict:
     sla_status_color = "green"
     
     if incident.sla_deadline:
-        sla_percentage = get_sla_percentage(incident.created_at, incident.sla_deadline)
-        sla_remaining = get_sla_remaining_time(incident.sla_deadline)
+        sla_percentage = get_sla_percentage(
+            incident.created_at, 
+            incident.sla_deadline,
+            incident.resolved_at,
+            incident.closed_at
+        )
+        sla_remaining = get_sla_remaining_time(
+            incident.sla_deadline,
+            None,
+            incident.resolved_at,
+            incident.closed_at
+        )
         sla_status_color = get_sla_status_color(sla_percentage, incident.overdue)
     
     return {
@@ -174,7 +184,13 @@ async def list_incidents(
         for incident in all_incidents:
             if incident.sla_deadline:
                 total_time = (incident.sla_deadline - incident.created_at).total_seconds()
-                elapsed = (now - incident.created_at).total_seconds()
+                # Use resolved_at or closed_at if available, otherwise use current time
+                if incident.closed_at:
+                    elapsed = (incident.closed_at - incident.created_at).total_seconds()
+                elif incident.resolved_at:
+                    elapsed = (incident.resolved_at - incident.created_at).total_seconds()
+                else:
+                    elapsed = (now - incident.created_at).total_seconds()
                 if total_time > 0:
                     percentage = (elapsed / total_time) * 100
                     
@@ -280,7 +296,7 @@ async def create_incident(data: IncidentCreate, db: AsyncSession = Depends(get_d
     created_at = datetime.utcnow()
     sla_deadline = calculate_sla_deadline(
         created_at,
-        sla_policy.resolution_days if sla_policy else 7
+        sla_policy.resolution_hours if sla_policy else 24
     )
     
     incident = Incident(
@@ -849,9 +865,9 @@ async def change_priority(
         sla_policy = sla_result.scalar_one_or_none()
         
         if sla_policy:
-            new_deadline = calculate_sla_deadline(
+            new_deadline = await calculate_sla_deadline(
                 incident.created_at,
-                sla_policy.resolution_days
+                sla_policy.resolution_hours
             )
             incident.sla_deadline = new_deadline
             # Reset overdue flag if deadline was extended

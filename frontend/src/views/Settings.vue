@@ -22,7 +22,7 @@ const showSLAModal = ref(false)
 // Forms
 const statusForm = ref({ id: null, name: '', color: '#6B7280' })
 const categoryForm = ref({ id: null, name: '', description: '' })
-const slaForm = ref({ id: null, priority_id: null, resolution_days: 7, description: '' })
+const slaForm = ref({ id: null, priority_id: null, resolution_hours: 24, description: '' })
 
 const loadData = async () => {
   loading.value = true
@@ -136,7 +136,7 @@ const editSLA = (policy) => {
     id: policy.id, 
     priority_id: policy.priority_id, 
     priority_name: policy.priority_name,
-    resolution_days: policy.resolution_days, 
+    resolution_hours: policy.resolution_hours, 
     description: policy.description || '' 
   }
   showSLAModal.value = true
@@ -145,7 +145,7 @@ const editSLA = (policy) => {
 const saveSLA = async () => {
   try {
     await axios.put(`/api/sla/policies/${slaForm.value.id}`, {
-      resolution_days: slaForm.value.resolution_days,
+      resolution_hours: slaForm.value.resolution_hours,
       description: slaForm.value.description
     })
     showSLAModal.value = false
@@ -272,7 +272,7 @@ const saveSLA = async () => {
           <div v-for="policy in slaPolicies" :key="policy.id" class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
             <div>
               <span class="font-medium text-slate-700">{{ policy.priority_name }}</span>
-              <span class="ml-2 text-primary-600 font-semibold">{{ policy.resolution_days }} дн.</span>
+              <span class="ml-2 text-primary-600 font-semibold">{{ policy.resolution_hours }} ч.</span>
               <p v-if="policy.description" class="text-sm text-slate-500">{{ policy.description }}</p>
             </div>
             <div class="flex gap-2">
@@ -361,9 +361,9 @@ const saveSLA = async () => {
             </div>
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Время на решение (дни)</label>
-            <input v-model.number="slaForm.resolution_days" type="number" min="1" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500" placeholder="7" />
-            <p class="text-xs text-slate-500 mt-1">Календарные дни (включая выходные)</p>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Время на решение (часы)</label>
+            <input v-model.number="slaForm.resolution_hours" type="number" min="1" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500" placeholder="24" />
+            <p class="text-xs text-slate-500 mt-1">Календарные часы (включая выходные)</p>
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">Описание</label>
@@ -372,7 +372,7 @@ const saveSLA = async () => {
         </div>
         
         <div class="flex gap-2 mt-6">
-          <button @click="saveSLA" :disabled="!slaForm.resolution_days" class="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg disabled:opacity-50">
+          <button @click="saveSLA" :disabled="!slaForm.resolution_hours" class="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg disabled:opacity-50">
             Сохранить
           </button>
           <button @click="showSLAModal = false" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg">

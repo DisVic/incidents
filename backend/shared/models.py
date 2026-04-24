@@ -268,13 +268,13 @@ class SLAPolicy(Base, UUIDMixin):
     """
     SLA-политика: время на решение для каждого приоритета.
     
-    resolution_days: количество календарных дней на решение инцидента.
-    Пример: приоритет "Высокий" → 3 дня.
+    resolution_hours: количество часов на решение инцидента.
+    Пример: приоритет "Высокий" → 8 часов.
     """
     __tablename__ = "sla_policies"
     
     priority_id = Column(UUID(as_uuid=True), ForeignKey("priorities.id"), unique=True, nullable=False)
-    resolution_days = Column(Integer, nullable=False)  # Календарных дней на решение
+    resolution_hours = Column(Integer, nullable=False)  # Часов на решение
     description = Column(Text, nullable=True)
 
 

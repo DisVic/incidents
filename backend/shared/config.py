@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True  # Включить подробное логирование
     
     # === База данных ===
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/incidents_db"
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/incidents"
     
     # === Redis для Celery ===
     REDIS_URL: str = "redis://localhost:6379/0"

@@ -2,8 +2,7 @@
 Инициализация настроек уведомлений для всех пользователей.
 
 Скрипт создаёт или обновляет настройки уведомлений:
-- Admin/Manager: все уведомления включены (internal + email)
-- Executor/User: email-уведомления только для важных событий
+- Все пользователи (Admin/Manager/Executor/User): все уведомления включены (internal + email)
 
 Запуск:
     python -m shared.init_notification_settings
@@ -64,15 +63,16 @@ async def init_notification_settings():
                     "escalation": all_enabled
                 }
             else:
-                # Executor получает только важные email-уведомления
+                # Executor - все уведомления включены
                 settings = {
-                    "incident_created": {"internal": True, "email": False},
+                    "incident_created": all_enabled,
                     "assigned_executor": all_enabled,
                     "new_comment": all_enabled,
                     "status_changed": all_enabled,
                     "incident_resolved": all_enabled,
-                    "overdue": {"internal": True, "email": False},
-                    "escalation": {"internal": True, "email": False}
+                    "overdue": all_enabled,
+                    "escalation": all_enabled,
+                    "priority_changed": all_enabled,
                 }
             
             if ns:

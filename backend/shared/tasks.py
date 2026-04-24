@@ -40,27 +40,27 @@ async def get_user_notification_settings(db, user_id: UUID) -> dict:
     ns = result.scalar_one_or_none()
     
     if not ns:
-        # Возвращаем настройки по умолчанию
+        # Возвращаем настройки по умолчанию (все уведомления включены)
         return {
-            "incident_created": {"internal": True, "email": False},
+            "incident_created": {"internal": True, "email": True},
             "assigned_executor": {"internal": True, "email": True},
-            "new_comment": {"internal": True, "email": False},
-            "status_changed": {"internal": True, "email": False},
+            "new_comment": {"internal": True, "email": True},
+            "status_changed": {"internal": True, "email": True},
             "incident_resolved": {"internal": True, "email": True},
             "overdue": {"internal": True, "email": True},
             "escalation": {"internal": True, "email": True},
-            "priority_changed": {"internal": True, "email": False},
+            "priority_changed": {"internal": True, "email": True},
         }
     
     return {
-        "incident_created": ns.incident_created or {"internal": True, "email": False},
+        "incident_created": ns.incident_created or {"internal": True, "email": True},
         "assigned_executor": ns.assigned_executor or {"internal": True, "email": True},
-        "new_comment": ns.new_comment or {"internal": True, "email": False},
-        "status_changed": ns.status_changed or {"internal": True, "email": False},
+        "new_comment": ns.new_comment or {"internal": True, "email": True},
+        "status_changed": ns.status_changed or {"internal": True, "email": True},
         "incident_resolved": ns.incident_resolved or {"internal": True, "email": True},
         "overdue": ns.overdue or {"internal": True, "email": True},
         "escalation": ns.escalation or {"internal": True, "email": True},
-        "priority_changed": ns.priority_changed or {"internal": True, "email": False},
+        "priority_changed": ns.priority_changed or {"internal": True, "email": True},
     }
 
 
@@ -322,7 +322,9 @@ async def _check_escalation_async():
             if incident.sla_deadline:
                 sla_percentage = get_sla_percentage(
                     incident.created_at,
-                    incident.sla_deadline
+                    incident.sla_deadline,
+                    incident.resolved_at,
+                    incident.closed_at
                 )
                 
                 # Level 1: 80% SLA (предупреждение)
@@ -550,6 +552,96 @@ def notify_incident_assigned(incident_id: str, executor_id: str, assigned_by_id:
     """
     import asyncio
     return asyncio.run(_notify_incident_assigned_async(incident_id, executor_id, assigned_by_id))
+
+
+async def _notify_incident_assigned_async(incident_id: str, executor_id: str, assigned_by_id: str):
+    """Send notification about incident assignment to executor, manager, and admins"""
+    async with async_session() as db:
+        # Get incident with relations
+        result = await db.execute(
+            select(Incident)
+            .options(
+                selectinload(Incident.initiator),
+                selectinload(Incident.executor),
+                selectinload(Incident.priority),
+                selectinload(Incident.category),
+                selectinload(Incident.department)
+            )
+            .where(Incident.id == UUID(incident_id))
+        )
+        incident = result.scalar_one_or_none()
+        
+        if not incident:
+            return {"error": "Incident not found"}
+        
+        # Get executor
+        executor_result = await db.execute(
+            select(User).where(User.id == UUID(executor_id))
+        )
+        executor = executor_result.scalar_one_or_none()
+        
+        if not executor:
+            return {"error": "Executor not found"}
+        
+        recipients = []
+        
+        # Get Admins (all)
+        admin_role_result = await db.execute(
+            select(Role).where(Role.name == "Admin")
+        )
+        admin_role = admin_role_result.scalar_one_or_none()
+        
+        if admin_role:
+            admins_result = await db.execute(
+                select(User).where(User.role_id == admin_role.id, User.is_active == True)
+            )
+            admins = list(admins_result.scalars().all())
+            # Exclude assigned_by from admins
+            for admin in admins:
+                if assigned_by_id and str(admin.id) != assigned_by_id and admin not in recipients:
+                    recipients.append(admin)
+        
+        # Get Manager from incident's department (exclude assigned_by)
+        manager_role_result = await db.execute(
+            select(Role).where(Role.name == "Manager")
+        )
+        manager_role = manager_role_result.scalar_one_or_none()
+        
+        if manager_role and incident.department_id:
+            managers_result = await db.execute(
+                select(User).where(
+                    User.role_id == manager_role.id,
+                    User.department_id == incident.department_id,
+                    User.is_active == True
+                )
+            )
+            for manager in managers_result.scalars().all():
+                if assigned_by_id and str(manager.id) != assigned_by_id and manager not in recipients:
+                    recipients.append(manager)
+        
+        # Add executor (always notify, unless they are the one who assigned)
+        if executor and str(executor.id) != assigned_by_id and executor not in recipients:
+            recipients.append(executor)
+        
+        if not recipients:
+            return {"sent": False, "reason": "No recipients"}
+        
+        extra = {"executor_name": executor.full_name, "assigned_by_id": assigned_by_id}
+        
+        for user in recipients:
+            await send_notification_with_settings(
+                db=db,
+                user=user,
+                incident=incident,
+                event_type="assigned_executor",
+                email_type="assigned_executor",
+                title=f"Назначен на инцидент #{str(incident.id)[:8]}",
+                message=f"Вы назначены исполнителем на инцидент: {incident.title}",
+                extra=extra
+            )
+        
+        await db.commit()
+        return {"sent": True, "recipients": len(recipients)}
 
 
 @celery_app.task(name="shared.tasks.notify_status_changed")

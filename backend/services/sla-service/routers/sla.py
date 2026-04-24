@@ -24,7 +24,7 @@ router = APIRouter()
 
 class SLAPolicyUpdate(BaseModel):
     """Обновление SLA-политики (все поля опциональны)."""
-    resolution_days: int = None
+    resolution_hours: int = None
     description: str = None
 
 
@@ -42,7 +42,7 @@ async def list_policies(db: AsyncSession = Depends(get_db)):
             "id": str(p.id),
             "priority_id": str(p.priority_id),
             "priority_name": p.priority.name if p.priority else None,
-            "resolution_days": p.resolution_days,
+            "resolution_hours": p.resolution_hours,
             "description": p.description
         }
         for p in policies
@@ -54,24 +54,26 @@ async def create_policy(data: SLAPolicyCreate, db: AsyncSession = Depends(get_db
     """
     Создание SLA-политики для приоритета.
     
-    resolution_days: время на решение в днях (календарных).
+    resolution_hours: время на решение в часах.
     """
     # Проверка: политика для этого приоритета уже существует
-    existing = await db.execute(
+    result = await db.execute(
         select(SLAPolicy).where(SLAPolicy.priority_id == data.priority_id)
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="SLA-политика для этого приоритета уже существует")
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail="Политика для этого приоритета уже существует")
     
     policy = SLAPolicy(
         priority_id=data.priority_id,
-        resolution_days=data.resolution_days,
+        resolution_hours=data.resolution_hours,
         description=data.description
     )
+    
     db.add(policy)
     await db.commit()
     await db.refresh(policy)
-    return {"id": str(policy.id), "priority_id": str(policy.priority_id), "resolution_days": policy.resolution_days, "description": policy.description}
+    return {"id": str(policy.id), "priority_id": str(policy.priority_id), "resolution_hours": policy.resolution_hours, "description": policy.description}
 
 
 @router.put("/policies/{policy_id}")
@@ -86,17 +88,18 @@ async def update_policy(policy_id: str, data: SLAPolicyUpdate, db: AsyncSession 
     if not policy:
         raise HTTPException(status_code=404, detail="SLA-политика не найдена")
     
-    if data.resolution_days is not None:
-        policy.resolution_days = data.resolution_days
+    if data.resolution_hours is not None:
+        policy.resolution_hours = data.resolution_hours
     if data.description is not None:
         policy.description = data.description
     
     await db.commit()
+    await db.refresh(policy)
     return {
         "id": str(policy.id),
         "priority_id": str(policy.priority_id),
         "priority_name": policy.priority.name if policy.priority else None,
-        "resolution_days": policy.resolution_days,
+        "resolution_hours": policy.resolution_hours,
         "description": policy.description
     }
 
@@ -117,17 +120,17 @@ async def delete_policy(policy_id: str, db: AsyncSession = Depends(get_db)):
 @router.post("/calculate-deadline")
 async def calculate_deadline(
     created_at: str,
-    resolution_days: int,
+    resolution_hours: int,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Расчёт дедлайна по SLA (для тестирования).
+    Рассчитывает дедлайн по времени создания и времени на решение.
     
     Args:
         created_at: Время создания инцидента (ISO 8601)
-        resolution_days: Время на решение в днях (календарных)
+        resolution_hours: Время на решение в часах
     """
     from datetime import datetime
     created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-    deadline = calculate_sla_deadline(created, resolution_days)
+    deadline = calculate_sla_deadline(created, resolution_hours)
     return {"deadline": deadline.isoformat()}

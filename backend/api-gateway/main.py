@@ -477,7 +477,7 @@ async def proxy_incident_comments(incident_id: str, request: Request):
     Args:
         incident_id: ID инцидента из URL
     """
-    return await proxy_request("incident", f"/comments/incidents/{incident_id}/comments", request)
+    return await proxy_request("incident", f"/incidents/{incident_id}/comments", request)
 
 @app.api_route("/api/incidents/{incident_id}/attachments", methods=["GET", "POST"])
 async def proxy_incident_attachments(incident_id: str, request: Request):
@@ -490,7 +490,7 @@ async def proxy_incident_attachments(incident_id: str, request: Request):
     Args:
         incident_id: ID инцидента из URL
     """
-    return await proxy_request("incident", f"/comments/incidents/{incident_id}/attachments", request)
+    return await proxy_request("incident", f"/incidents/{incident_id}/attachments", request)
 
 @app.api_route("/api/incidents/{incident_id}/history", methods=["GET"])
 async def proxy_incident_history(incident_id: str, request: Request):
@@ -553,14 +553,16 @@ async def proxy_reset_executor(user_id: str, request: Request):
     """
     return await proxy_request("incident", f"/incidents/reset-executor/{user_id}", request)
 
-@app.api_route("/api/comments/{path:path}", methods=["GET", "POST", "DELETE"])
+@app.api_route("/api/comments/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_comments(path: str, request: Request):
     """
     Проксирование запросов к комментариям (прямой доступ).
     
     Используется для операций с конкретными комментариями:
     - GET    /api/comments/123     - Получить комментарий
-    - DELETE /api/comments/123     - Удалить комментарий
+    - POST   /api/comments          - Создать комментарий
+    - PUT    /api/comments/123      - Обновить комментарий
+    - DELETE /api/comments/123      - Удалить комментарий
     """
     return await proxy_request("incident", f"/comments/{path}", request)
 
@@ -569,13 +571,13 @@ async def proxy_attachments(path: str, request: Request):
     """
     Проксирование запросов к вложениям (файлам).
     
-    - GET    /api/attachments/abc123    - Скачать файл по ID
-    - DELETE /api/attachments/abc123    - Удалить файл
+    - GET    /api/attachments/abc123/download    - Скачать файл по ID
+    - DELETE /api/attachments/abc123             - Удалить файл
     
     Args:
         path: ID файла или путь к нему
     """
-    return await proxy_request("incident", f"/comments/attachments/{path}", request)
+    return await proxy_request("incident", f"/attachments/{path}", request)
 
 # -----------------------------------------------------------------------------
 # СПРАВОЧНИКИ (REFERENCE DATA)

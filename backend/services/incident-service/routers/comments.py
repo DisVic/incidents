@@ -12,14 +12,15 @@ Endpoint'ы:
 """
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 
 from shared import get_db, settings
-from shared.models import Comment, Attachment
+from shared.models import Comment, Attachment, User
 
 router = APIRouter()
 
@@ -27,7 +28,11 @@ router = APIRouter()
 class CommentCreate(BaseModel):
     """Данные для создания комментария."""
     content: str
-    author_id: str = None  # Будет установлен из аутентификации
+
+
+class CommentUpdate(BaseModel):
+    """Данные для обновления комментария."""
+    content: str
 
 
 def comment_to_dict(comment: Comment) -> dict:
@@ -41,6 +46,62 @@ def comment_to_dict(comment: Comment) -> dict:
         "content": comment.content,
         "created_at": comment.created_at.isoformat() if comment.created_at else None,
     }
+
+
+async def get_current_user_id_optional(request: Request) -> Optional[str]:
+    """
+    Извлекает user_id из JWT токена в заголовке Authorization.
+    
+    Возвращает None если токен отсутствует или невалиден (не выбрасывает ошибку).
+    """
+    auth_header = request.headers.get("Authorization")
+    
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    
+    token = auth_header.split(" ")[1]
+    from shared import decode_token
+    
+    try:
+        payload = decode_token(token, settings.SECRET_KEY)
+        # JWT токен использует 'sub' для user_id, а не 'user_id'
+        if payload and "sub" in payload:
+            return payload["sub"]
+    except Exception:
+        pass
+    
+    return None
+
+    token = auth_header.split(" ")[1]
+    from shared import decode_token
+
+    try:
+        payload = decode_token(token, settings.SECRET_KEY)
+        print(f"[DEBUG] Decoded payload: {payload}")
+        if payload and "user_id" in payload:
+            print(f"[DEBUG] Extracted user_id: {payload['user_id']}")
+            return payload["user_id"]
+        # JWT токен использует 'sub' для user_id, а не 'user_id'
+        if payload and "sub" in payload:
+            user_id = payload["sub"]
+            print(f"[DEBUG] Extracted user_id from 'sub': {user_id}")
+            return user_id
+    except Exception as e:
+        print(f"[DEBUG] Error decoding token: {e}")
+        pass
+    
+    return None
+
+
+async def get_current_user_id(request: Request) -> str:
+    """
+    Извлекает user_id из JWT токена в заголовке Authorization.
+    Требует валидную аутентификацию.
+    """
+    user_id = await get_current_user_id_optional(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Требуется аутентификация")
+    return user_id
 
 
 @router.get("/incidents/{incident_id}/comments")
@@ -60,18 +121,35 @@ async def list_comments(incident_id: str, db: AsyncSession = Depends(get_db)):
 async def create_comment(
     incident_id: str,
     data: CommentCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
     Добавить комментарий к инциденту.
     
+    Автор берётся из JWT токена (текущий пользователь).
+    Если токен не валиден - используется Admin по умолчанию.
     Отправляет уведомление всем участникам инцидента.
     """
-    author_id = data.author_id or "40000000-0000-0000-0000-000000000001"  # По умолчанию admin
+    # Получаем user_id из JWT токена (опционально)
+    user_id = await get_current_user_id_optional(request)
+    
+    # Если токен не валиден, используем Admin по умолчанию
+    if not user_id:
+        user_id = "40000000-0000-0000-0000-000000000001"  # admin
+    
+    # Проверяем, что пользователь существует
+    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if not user:
+        # Если пользователь не найден, используем admin
+        user_id = "40000000-0000-0000-0000-000000000001"
+        result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+        user = result.scalar_one_or_none()
     
     comment = Comment(
         incident_id=uuid.UUID(incident_id),
-        author_id=uuid.UUID(author_id),
+        author_id=uuid.UUID(user_id),
         content=data.content
     )
     db.add(comment)
@@ -84,25 +162,105 @@ async def create_comment(
         .options(selectinload(Comment.author))
         .where(Comment.id == comment.id)
     )
-    
+
     # Отправляем уведомление
     from shared.tasks import notify_new_comment
-    notify_new_comment.delay(incident_id, author_id, data.content)
+    notify_new_comment.delay(incident_id, user_id, data.content)
     
     return comment_to_dict(result.scalar_one())
 
 
 @router.delete("/comments/{comment_id}")
-async def delete_comment(comment_id: str, db: AsyncSession = Depends(get_db)):
-    """Удаление комментария."""
-    result = await db.execute(select(Comment).where(Comment.id == comment_id))
+async def delete_comment(
+    comment_id: str, 
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Удаление комментария.
+    
+    Может удалить:
+    - Создатель комментария
+    - Администратор
+    """
+    # Получаем user_id из JWT токена
+    user_id = await get_current_user_id_optional(request)
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Требуется аутентификация")
+    
+    # Ищем комментарий
+    result = await db.execute(
+        select(Comment)
+        .where(Comment.id == uuid.UUID(comment_id))
+    )
     comment = result.scalar_one_or_none()
+    
     if not comment:
-        raise HTTPException(status_code=404, detail="Comment not found")
+        raise HTTPException(status_code=404, detail="Комментарий не найден")
+    
+    # Проверяем права
+    is_creator = str(comment.author_id) == user_id
+    
+    # Проверяем, админ ли пользователь
+    is_admin = False
+    user_result = await db.execute(
+        select(User)
+        .options(selectinload(User.role))
+        .where(User.id == uuid.UUID(user_id))
+    )
+    current_user = user_result.scalar_one_or_none()
+    if current_user and current_user.role:
+        is_admin = current_user.role.name == "Admin"
+    
+    if not is_creator and not is_admin:
+        raise HTTPException(status_code=403, detail="Нет прав на удаление этого комментария")
+    
     await db.delete(comment)
     await db.commit()
-    return {"message": "Comment deleted"}
+    return {"message": "Комментарий удалён"}
+    
 
+@router.put("/comments/{comment_id}")
+async def update_comment(
+    comment_id: str,
+    data: CommentUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Обновление комментария.
+    
+    Может редактировать только создатель комментария.
+    """
+    # Получаем user_id из JWT токена
+    user_id = await get_current_user_id_optional(request)
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Требуется аутентификация")
+    
+    # Ищем комментарий
+    result = await db.execute(
+        select(Comment)
+        .options(selectinload(Comment.author))
+        .where(Comment.id == uuid.UUID(comment_id))
+    )
+    comment = result.scalar_one_or_none()
+    
+    if not comment:
+        raise HTTPException(status_code=404, detail="Комментарий не найден")
+    
+    # Проверяем права - только создатель
+    if str(comment.author_id) != user_id:
+        raise HTTPException(status_code=403, detail="Нет прав на редактирование этого комментария")
+    
+    # Обновляем контент
+    comment.content = data.content
+    await db.commit()
+    await db.refresh(comment)
+    
+    return comment_to_dict(comment)
+    
 
 @router.get("/incidents/{incident_id}/attachments")
 async def list_attachments(incident_id: str, db: AsyncSession = Depends(get_db)):
@@ -131,16 +289,24 @@ async def list_attachments(incident_id: str, db: AsyncSession = Depends(get_db))
 async def upload_attachment(
     incident_id: str,
     file: UploadFile = File(...),
-    uploader_id: str = "40000000-0000-0000-0000-000000000001",
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    request: Request = Request
 ):
     """
     Загрузка файла к инциденту.
     
     Файлы сохраняются в /app/uploads/{incident_id}/
+    uploader_id берётся из JWT токена. Если токен не валиден - используется Admin.
     """
     import os
     import aiofiles
+    
+    # Получаем user_id из JWT токена (опционально)
+    user_id = await get_current_user_id_optional(request)
+    
+    # Если токен не валиден, используем Admin по умолчанию
+    if not user_id:
+        user_id = "40000000-0000-0000-0000-000000000001"  # admin
     
     # Создаём директорию
     upload_dir = os.path.join("/app/uploads", incident_id)
@@ -158,7 +324,7 @@ async def upload_attachment(
     # Создаём запись в БД
     attachment = Attachment(
         incident_id=uuid.UUID(incident_id),
-        uploader_id=uuid.UUID(uploader_id),
+        uploader_id=uuid.UUID(user_id),
         filename=file.filename,
         filepath=filepath,
         filesize=len(contents),

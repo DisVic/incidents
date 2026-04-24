@@ -49,49 +49,72 @@ def decode_token(token: str, secret_key: str, algorithm: str = "HS256") -> Optio
 
 # === Расчёт SLA дедлайнов по приоритетам (календарные дни) ===
 
-# Стандартные дедлайны по приоритетам (в днях)
+# Стандартные дедлайны по приоритетам (в часах)
 PRIORITY_DEADLINES = {
-    "Низкий": 14,      # 14 дней
-    "Средний": 7,      # 7 дней
-    "Высокий": 3,      # 3 дня
-    "Критический": 1   # 1 день
+    "Критический": 4,      # 4 часа
+    "Высокий": 8,          # 8 часов
+    "Средний": 24,         # 24 часа (1 день)
+    "Низкий": 72,          # 72 часа (3 дня)
 }
 
 
 def calculate_sla_deadline(
     created_at: datetime,
-    resolution_days: int
+    resolution_hours: int
 ) -> datetime:
     """
-    Рассчитывает дедлайн SLA путём добавления календарных дней.
-    Выходные и праздники учитываются (дедлайн сдвигается по календарю).
+    Рассчитывает дедлайн SLA в календарных днях.
     
-    Пример: инцидент создан в Пт 17:00, SLA 3 дня → дедлайн Пн 17:00
+    Args:
+        created_at: Время создания инцидента
+        resolution_hours: Время на решение в часах
+        
+    Пример: инцидент создан в Пт 17:00, SLA 24ч → дедлайн Пн 09:00
     """
-    return created_at + timedelta(days=resolution_days)
+    # Простой расчет: календарные часы
+    return created_at + timedelta(hours=resolution_hours)
 
 
-def get_resolution_days_by_priority(priority_name: str) -> int:
+def get_resolution_hours_by_priority(priority_name: str) -> int:
     """
-    Возвращает количество дней для решения по названию приоритета.
-    Если приоритет не найден, возвращает 7 дней (по умолчанию).
+    Возвращает количество часов для решения по названию приоритета.
+    Если приоритет не найден, возвращает 24 часа (по умолчанию).
     """
-    return PRIORITY_DEADLINES.get(priority_name, 7)
+    return PRIORITY_DEADLINES.get(priority_name, 24)
 
 
-def get_sla_percentage(created_at: datetime, deadline: datetime) -> float:
+def get_sla_percentage(created_at: datetime, deadline: datetime, resolved_at: datetime = None, closed_at: datetime = None) -> float:
     # Возвращает % использованного времени SLA (0-100+)
+    # Если инцидент решён или закрыт, расчёт останавливается на момент решения/закрытия
     total_time = (deadline - created_at).total_seconds()
-    elapsed = (datetime.utcnow() - created_at).total_seconds()
-    return min(100.0, (elapsed / total_time) * 100) if total_time > 0 else 100.0
+    
+    if total_time <= 0:
+        return 100.0
+    
+    # Определяем время для расчёта: resolved_at, closed_at или текущее время
+    if closed_at:
+        elapsed = (closed_at - created_at).total_seconds()
+    elif resolved_at:
+        elapsed = (resolved_at - created_at).total_seconds()
+    else:
+        elapsed = (datetime.utcnow() - created_at).total_seconds()
+    
+    return min(100.0, (elapsed / total_time) * 100)
 
 
-def get_sla_remaining_time(deadline: datetime, now: datetime = None) -> dict:
+def get_sla_remaining_time(deadline: datetime, now: datetime = None, resolved_at: datetime = None, closed_at: datetime = None) -> dict:
     """
     Возвращает оставшееся время до дедлайна SLA.
     Формат: {"total_seconds": ..., "is_overdue": bool, "formatted": "2 д. 4 ч."}
+    
+    Если инцидент решён или закрыт, использует resolved_at/closed_at вместо текущего времени.
     """
-    if now is None:
+    # Если инцидент решён или закрыт, фиксируем время на момент решения/закрытия
+    if closed_at:
+        now = closed_at
+    elif resolved_at:
+        now = resolved_at
+    elif now is None:
         now = datetime.utcnow()
     
     delta = deadline - now

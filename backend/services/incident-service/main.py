@@ -17,15 +17,16 @@ Incident Service — сервис управления инцидентами.
 import uuid
 from datetime import datetime, timedelta
 from io import BytesIO, StringIO
+from typing import Optional
 
-from fastapi import FastAPI, Depends, Query
+from fastapi import FastAPI, Depends, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func, and_, or_, case
 from sqlalchemy.orm import selectinload
 
 from routers import incidents, comments, reference
-from shared import settings, get_db
+from shared import settings, get_db, decode_token
 from shared.models import Incident, Status, Priority, Department, User, SLAPolicy
 
 app = FastAPI(
@@ -43,9 +44,50 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# =============================================================================
+# AUTHENTICATION MIDDLEWARE - Получение user_id из JWT токена
+# =============================================================================
+async def get_current_user_id(request: Request) -> Optional[str]:
+    """
+    Извлекает user_id из JWT токена в заголовке Authorization.
+    
+    Проверяет заголовок Authorization: Bearer <token>
+    Декодирует JWT и возвращает user_id из payload.
+    
+    Returns:
+        str: user_id если токен валиден
+        None: если токен отсутствует или невалиден
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    
+    token = auth_header.split(" ")[1]
+    try:
+        payload = decode_token(token, settings.SECRET_KEY)
+        if payload and "user_id" in payload:
+            return payload["user_id"]
+    except Exception:
+        pass
+    
+    return None
+
+
+async def get_required_user_id(request: Request) -> str:
+    """
+    Требует валидный JWT токен.
+    
+    Если токен отсутствует или невалиден - выбрасывает HTTP 401.
+    """
+    user_id = await get_current_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Требуется аутентификация")
+    return user_id
+
 # Подключение роутеров
 app.include_router(incidents.router, prefix="/incidents", tags=["Incidents"])
-app.include_router(comments.router, prefix="/comments", tags=["Comments"])
+app.include_router(comments.router, tags=["Comments"])
 app.include_router(reference.router, prefix="/reference", tags=["Reference"])
 
 

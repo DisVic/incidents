@@ -117,12 +117,12 @@ async def seed_data():
         await session.flush()
 
         # === SLA-ПОЛИТИКИ ===
-        # Время решения для каждого приоритета (в календарных днях)
+        # Время решения для каждого приоритета (в часах)
         sla_policies = [
-            SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_LOW_ID, resolution_days=14, description="Низкий приоритет - 14 дней"),
-            SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_MEDIUM_ID, resolution_days=7, description="Средний приоритет - 7 дней"),
-            SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_HIGH_ID, resolution_days=3, description="Высокий приоритет - 3 дня"),
-            SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_CRITICAL_ID, resolution_days=1, description="Критический приоритет - 1 день"),
+            SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_LOW_ID, resolution_hours=72, description="Низкий приоритет - 72 часа"),
+            SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_MEDIUM_ID, resolution_hours=24, description="Средний приоритет - 24 часа"),
+            SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_HIGH_ID, resolution_hours=8, description="Высокий приоритет - 8 часов"),
+            SLAPolicy(id=uuid.uuid4(), priority_id=PRIORITY_CRITICAL_ID, resolution_hours=4, description="Критический приоритет - 4 часа"),
         ]
         session.add_all(sla_policies)
         await session.flush()
