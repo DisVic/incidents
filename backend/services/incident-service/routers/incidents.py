@@ -4,6 +4,7 @@ API инцидентов — создание, назначение, измен�
 Endpoint'ы:
 - GET /incidents — список с фильтрацией, сортировкой, пагинацией
 - GET /incidents/{id} — данные инцидента
+- PUT /incidents/{id} — редактирование инцидента (инициатором)
 - POST /incidents — создание инцидента
 - POST /incidents/{id}/take — взять в работу
 - POST /incidents/{id}/assign — назначить исполнителя
@@ -25,7 +26,7 @@ from shared import get_db, calculate_sla_deadline
 from shared.models import Incident, Status, Priority, Category, Department, User, SLAPolicy, IncidentHistory, Comment, Attachment, Notification
 from shared.utils import get_sla_percentage, get_sla_remaining_time, get_sla_status_color
 from shared.tasks import notify_incident_created, notify_priority_changed
-from schemas import IncidentCreate, IncidentResponse, StatusChange, CloseIncident, AssignExecutor, TakeIncident, UpdateDeadline
+from schemas import IncidentCreate, IncidentUpdate, IncidentResponse, StatusChange, CloseIncident, AssignExecutor, TakeIncident, UpdateDeadline
 
 router = APIRouter()
 
@@ -297,6 +298,168 @@ async def get_incident(incident_id: str, db: AsyncSession = Depends(get_db)):
     incident = result.scalar_one_or_none()
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
+    return incident_to_dict(incident)
+    
+
+@router.put("/{incident_id}")
+async def update_incident(
+    incident_id: str, 
+    data: IncidentUpdate, 
+    user_id: str = Query(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Редактирование инцидента инициатором.
+    
+    Инициатор может изменить:
+    - Заголовок и описание
+    - Категорию
+    - Отдел
+    - Приоритет (с автоматическим пересчётом SLA-дедлайна)
+    
+    Ограничения:
+    - Только инициатор может редактировать
+    - Нельзя редактировать закрытые/решённые инциденты
+    - Нельзя редактировать, если инцидент взят в работу (статус "В работе")
+    """
+    # Получаем инцидент
+    result = await db.execute(
+        select(Incident)
+        .options(
+            selectinload(Incident.status),
+            selectinload(Incident.priority),
+            selectinload(Incident.category),
+            selectinload(Incident.department)
+        )
+        .where(Incident.id == incident_id)
+    )
+    incident = result.scalar_one_or_none()
+    
+    if not incident:
+        raise HTTPException(status_code=404, detail="Инцидент не найден")
+    
+    # Проверяем, что пользователь - инициатор
+    if str(incident.initiator_id) != user_id:
+        raise HTTPException(status_code=403, detail="Только инициатор может редактировать инцидент")
+    
+    # Проверяем статус - нельзя редактировать решённые/закрытые или в работе
+    if incident.status.name in ["Решён", "Закрыт"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Нельзя редактировать инцидент в статусе '{incident.status.name}'"
+        )
+    
+    if incident.status.name == "В работе":
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя редактировать инцидент, который уже взят в работу"
+        )
+    
+    # Собираем изменения для истории
+    changes = []
+    old_department_name = incident.department.name if incident.department else "—"
+    
+    # Обновляем поля
+    if data.title is not None and data.title != incident.title:
+        changes.append(f"Заголовок: {incident.title} → {data.title}")
+        incident.title = data.title
+    
+    if data.description is not None and data.description != incident.description:
+        changes.append("Описание обновлено")
+        incident.description = data.description
+    
+    if data.category_id is not None and data.category_id != incident.category_id:
+        # Получаем новую категорию
+        cat_result = await db.execute(select(Category).where(Category.id == data.category_id))
+        new_cat = cat_result.scalar_one_or_none()
+        if new_cat:
+            old_cat_name = incident.category.name if incident.category else "—"
+            changes.append(f"Категория: {old_cat_name} → {new_cat.name}")
+            incident.category_id = data.category_id
+    
+    if data.priority_id is not None and data.priority_id != incident.priority_id:
+        # Получаем новый приоритет и пересчитываем SLA
+        pri_result = await db.execute(select(Priority).where(Priority.id == data.priority_id))
+        new_priority = pri_result.scalar_one_or_none()
+        if new_priority:
+            old_priority_name = incident.priority.name if incident.priority else "—"
+            changes.append(f"Приоритет: {old_priority_name} → {new_priority.name}")
+            
+            # Пересчитываем SLA-дедлайн
+            sla_result = await db.execute(select(SLAPolicy).where(SLAPolicy.priority_id == data.priority_id))
+            sla_policy = sla_result.scalar_one_or_none()
+            
+            if sla_policy:
+                old_deadline = incident.sla_deadline
+                incident.sla_deadline = calculate_sla_deadline(incident.created_at, sla_policy.resolution_hours)
+                incident.priority_id = data.priority_id
+                
+                # Сбрасываем overdue, если новый дедлайн в будущем
+                if incident.sla_deadline > datetime.utcnow():
+                    incident.overdue = False
+                
+                changes.append(f"Дедлайн: {old_deadline.strftime('%d.%m.%Y %H:%M')} → {incident.sla_deadline.strftime('%d.%m.%Y %H:%M')}")
+            else:
+                incident.priority_id = data.priority_id
+    
+    if data.department_id is not None and data.department_id != incident.department_id:
+        # Получаем новый отдел
+        dept_result = await db.execute(select(Department).where(Department.id == data.department_id))
+        new_dept = dept_result.scalar_one_or_none()
+        if new_dept:
+            changes.append(f"Отдел: {old_department_name} → {new_dept.name}")
+            incident.department_id = data.department_id
+            
+            # Если исполнитель из старого отдела - сбрасываем назначение
+            if incident.executor_id:
+                exec_result = await db.execute(select(User).where(User.id == incident.executor_id))
+                executor = exec_result.scalar_one_or_none()
+                if executor and executor.department_id == incident.department_id:
+                    # Сбрасываем исполнителя
+                    old_executor_name = executor.full_name
+                    incident.executor_id = None
+                    incident.assigned_at = None
+                    
+                    # Если статус был "Назначен", возвращаем в "Новый"
+                    if incident.status.name == "Назначен":
+                        new_status = await get_status_by_name(db, "Новый")
+                        if new_status:
+                            incident.status_id = new_status.id
+                            changes.append(f"Исполнитель сброшен: {old_executor_name} (из старого отдела)")
+                            changes.append(f"Статус: Назначен → Новый")
+    
+    # Если не было изменений
+    if not changes:
+        raise HTTPException(status_code=400, detail="Нет изменений для применения")
+    
+    # Добавляем запись в историю
+    history = IncidentHistory(
+        incident_id=incident.id,
+        user_id=uuid.UUID(user_id),
+        previous_status_id=incident.status_id,
+        new_status_id=incident.status_id,
+        comment="Инцидент отредактирован инициатором: " + "; ".join(changes)
+    )
+    db.add(history)
+    
+    await db.commit()
+    await db.refresh(incident)
+    
+    # Перезагружаем с данными
+    result = await db.execute(
+        select(Incident)
+        .options(
+            selectinload(Incident.status),
+            selectinload(Incident.priority),
+            selectinload(Incident.category),
+            selectinload(Incident.department),
+            selectinload(Incident.initiator),
+            selectinload(Incident.executor)
+        )
+        .where(Incident.id == incident.id)
+    )
+    incident = result.scalar_one()
+    
     return incident_to_dict(incident)
     
 

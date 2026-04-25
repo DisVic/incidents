@@ -65,6 +65,70 @@ const canEdit = computed(() => {
   return authStore.isExecutor
 })
 
+// Инициатор может редактировать свои инциденты
+const canEditAsInitiator = computed(() => {
+  if (!incident.value || !authStore.user) return false
+  return incident.value.initiator_id === authStore.user.id &&
+         !['Решён', 'Закрыт', 'В работе'].includes(incident.value.status_name)
+})
+
+const showEditModal = ref(false)
+const editForm = ref({
+  title: '',
+  description: '',
+  category_id: null,
+  priority_id: null,
+  department_id: null
+})
+const editLoading = ref(false)
+const categories = ref([])
+const departments = ref([])
+
+const openEditModal = () => {
+  editForm.value = {
+    title: incident.value.title,
+    description: incident.value.description,
+    category_id: incident.value.category_id,
+    priority_id: incident.value.priority_id,
+    department_id: incident.value.department_id
+  }
+  showEditModal.value = true
+  // Load categories and departments if needed
+  if (!categories.value.length) {
+    axios.get('/api/categories').then(res => {
+      categories.value = res.data
+    })
+  }
+  if (!departments.value.length && authStore.isAdmin) {
+    axios.get('/api/departments', { params: { limit: 100 } }).then(res => {
+      departments.value = res.data.data || res.data
+    })
+  }
+}
+
+const saveEdit = async () => {
+  editLoading.value = true
+  try {
+    const payload = {}
+    if (editForm.value.title !== incident.value.title) payload.title = editForm.value.title
+    if (editForm.value.description !== incident.value.description) payload.description = editForm.value.description
+    if (editForm.value.category_id !== incident.value.category_id) payload.category_id = editForm.value.category_id
+    if (editForm.value.priority_id !== incident.value.priority_id) payload.priority_id = editForm.value.priority_id
+    if (editForm.value.department_id !== incident.value.department_id) payload.department_id = editForm.value.department_id
+    
+    await axios.put(`/api/incidents/${route.params.id}`, payload, {
+      params: { user_id: authStore.user.id }
+    })
+    showEditModal.value = false
+    await loadData()
+    await showAlert('Инцидент обновлён')
+  } catch (err) {
+    await showAlert(getErrorMessage(err))
+  } finally {
+    editLoading.value = false
+  }
+}
+
 const canAssign = computed(() => {
   // Admin и Manager могут назначать и переназначать исполнителя
   if (!incident.value || !authStore.user) return false
@@ -855,6 +919,14 @@ const deleteComment = async (comment) => {
             
             <div class="space-y-2">
               <button
+                v-if="canEditAsInitiator"
+                @click="openEditModal"
+                class="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+              >
+                Редактировать инцидент
+              </button>
+              
+              <button
                 v-if="canTake"
                 @click="takeIncident"
                 class="w-full px-4 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
@@ -1106,6 +1178,90 @@ const deleteComment = async (comment) => {
             </button>
             <button 
               @click="showEditCommentModal = false" 
+              class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200"
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Edit Incident Modal (for initiator) -->
+      <div v-if="showEditModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-6 w-full max-w-lg">
+          <h3 class="text-lg font-semibold mb-4">Редактировать инцидент</h3>
+          
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Заголовок</label>
+              <input
+                v-model="editForm.title"
+                type="text"
+                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                placeholder="Заголовок инцидента"
+              />
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Описание</label>
+              <textarea
+                v-model="editForm.description"
+                rows="4"
+                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                placeholder="Подробное описание проблемы..."
+              ></textarea>
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Категория</label>
+              <select
+                v-model="editForm.category_id"
+                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                <option :value="null">Не указана</option>
+                <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+              </select>
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Приоритет</label>
+              <select
+                v-model="editForm.priority_id"
+                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                <option v-for="pri in priorities" :key="pri.id" :value="pri.id">
+                  {{ pri.name }}
+                </option>
+              </select>
+              <p class="text-xs text-slate-500 mt-1">
+                При изменении приоритета дедлайн SLA будет пересчитан автоматически
+              </p>
+            </div>
+            
+            <div v-if="authStore.isAdmin">
+              <label class="block text-sm font-medium text-slate-700 mb-1">Отдел</label>
+              <select
+                v-model="editForm.department_id"
+                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
+              </select>
+              <p class="text-xs text-amber-600 mt-1">
+                ⚠️ При смене отдела исполнитель может быть сброшен
+              </p>
+            </div>
+          </div>
+          
+          <div class="flex gap-2 mt-6">
+            <button 
+              @click="saveEdit" 
+              :disabled="editLoading"
+              class="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+            >
+              {{ editLoading ? 'Сохранение...' : 'Сохранить' }}
+            </button>
+            <button 
+              @click="showEditModal = false" 
               class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200"
             >
               Отмена

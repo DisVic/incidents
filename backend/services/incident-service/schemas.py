@@ -33,10 +33,11 @@ class IncidentCreate(IncidentBase):
 
 class IncidentUpdate(BaseModel):
     """Обновление инцидента (все поля опциональны)."""
-    title: Optional[str] = None
-    description: Optional[str] = None
+    title: Optional[str] = Field(None, min_length=5, max_length=255)
+    description: Optional[str] = Field(None, min_length=10)
     category_id: Optional[uuid.UUID] = None
     priority_id: Optional[uuid.UUID] = None
+    department_id: Optional[uuid.UUID] = None
 
 
 class IncidentResponse(BaseModel):
