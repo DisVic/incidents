@@ -358,39 +358,44 @@ function getStatusBadgeClass(statusName) {
 <template>
   <div>
     <!-- Header with filters and export -->
-    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-      <h1 class="text-2xl font-bold text-slate-800">Дашборд</h1>
-      <div class="flex flex-wrap items-center gap-3">
-        <!-- Period filter -->
-        <div class="flex items-center gap-2">
-          <label class="text-sm text-slate-600">Период:</label>
-          <select v-model="period"
-                  class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-            <option v-for="p in periods" :key="p.value" :value="p.value">{{ p.label }}</option>
-          </select>
-        </div>
-        <!-- Custom date inputs -->
-        <div v-if="period === 'custom'" class="flex items-center gap-2">
-          <input type="date" v-model="customDateFrom"
-                 class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-          <span class="text-slate-400">—</span>
-          <input type="date" v-model="customDateTo"
-                 class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-        </div>
-        <!-- Department filter (admin only) -->
-        <div v-if="canFilterByDepartment" class="flex items-center gap-2">
-          <label class="text-sm text-slate-600">Отдел:</label>
-          <select v-model="departmentId"
-                  class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-            <option value="">Все отделы</option>
-            <option v-for="dept in departments" :key="dept.id" :value="dept.id">
-              {{ dept.name }}
-            </option>
-          </select>
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-6 border border-slate-200">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <h1 class="text-2xl font-bold text-slate-800">Дашборд</h1>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
+          <!-- Period filter -->
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Период</label>
+            <select v-model="period"
+                    class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+              <option v-for="p in periods" :key="p.value" :value="p.value">{{ p.label }}</option>
+            </select>
+          </div>
+          <!-- Custom date inputs -->
+          <div v-if="period === 'custom'" class="sm:col-span-2 lg:col-span-2">
+            <label class="block text-xs text-slate-500 mb-1">Период (с — по)</label>
+            <div class="flex items-center gap-2">
+              <input type="date" v-model="customDateFrom"
+                     class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+              <span class="text-slate-400">—</span>
+              <input type="date" v-model="customDateTo"
+                     class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+            </div>
+          </div>
+          <!-- Department filter (admin only) -->
+          <div v-if="canFilterByDepartment" :class="period === 'custom' ? '' : 'sm:col-span-2 lg:col-span-2'">
+            <label class="block text-xs text-slate-500 mb-1">Отдел</label>
+            <select v-model="departmentId"
+                    class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+              <option value="">Все отделы</option>
+              <option v-for="dept in departments" :key="dept.id" :value="dept.id">
+                {{ dept.name }}
+              </option>
+            </select>
+          </div>
         </div>
       </div>
     </div>
-    
+      
     <!-- Loading -->
     <div v-if="loading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>

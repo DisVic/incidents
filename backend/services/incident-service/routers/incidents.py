@@ -98,15 +98,17 @@ def incident_to_dict(incident: Incident) -> dict:
 async def list_incidents(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    status_id: uuid.UUID = None,
-    priority_id: uuid.UUID = None,
-    department_id: uuid.UUID = None,
+    status_id: str = None,
+    priority_id: str = None,
+    department_id: str = None,
+    executor_id: str = None,  # Фильтр по исполнителю
+    no_executor: bool = None,  # Фильтр "без исполнителя"
     overdue: bool = None,
-    sla_status: str = Query(None, regex="^(overdue|near|ok)$"),  # overdue=просрочен, near=>80%, ok=<80%
+    sla_status: str = Query(None, regex="^(overdue|near|ok)$"),
     search: str = None,
     sort_field: str = Query("created_at", regex="^(created_at|sla_deadline|priority|title)$"),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
-    user_department_id: uuid.UUID = None,  # Для Executor — фильтр по его отделу
+    user_department_id: str = None,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -114,13 +116,26 @@ async def list_incidents(
     
     Query params:
     - page, limit: пагинация
-    - status_id, priority_id, department_id: фильтры
+    - status_id, priority_id, department_id, executor_id: фильтры (UUID strings)
+    - no_executor: только без исполнителя (True)
     - overdue: только просроченные (True/False)
     - sla_status: 'overdue' (просрочен), 'near' (>80% SLA), 'ok' (<80%)
     - search: поиск по заголовку
     - sort_field, sort_order: сортировка
     - user_department_id: фильтр по отделу (для Executor)
     """
+    # Convert UUID strings to UUID objects
+    import uuid as uuid_module
+    status_uuid = uuid_module.UUID(status_id) if status_id else None
+    priority_uuid = uuid_module.UUID(priority_id) if priority_id else None
+    department_uuid = uuid_module.UUID(department_id) if department_id else None
+    executor_uuid = uuid_module.UUID(executor_id) if executor_id else None
+    user_dept_uuid = uuid_module.UUID(user_department_id) if user_department_id else None
+    
+    # Debug logging
+    import logging
+    logging.info(f"list_incidents called with params: page={page}, limit={limit}, executor_id={executor_id}, executor_uuid={executor_uuid}, department_id={department_id}, user_department_id={user_department_id}")
+    
     query = select(Incident).options(
         selectinload(Incident.status),
         selectinload(Incident.priority),
@@ -130,14 +145,25 @@ async def list_incidents(
         selectinload(Incident.executor)
     )
     
-    if status_id:
-        query = query.where(Incident.status_id == status_id)
-    if priority_id:
-        query = query.where(Incident.priority_id == priority_id)
-    if department_id:
-        query = query.where(Incident.department_id == department_id)
+    if status_uuid:
+        query = query.where(Incident.status_id == status_uuid)
+    if priority_uuid:
+        query = query.where(Incident.priority_id == priority_uuid)
+    if department_uuid:
+        query = query.where(Incident.department_id == department_uuid)
+    if executor_uuid:
+        # Debug logging
+        import logging
+        logging.info(f"Filtering by executor_id: {executor_uuid} (type: {type(executor_uuid)})")
+        query = query.where(Incident.executor_id == executor_uuid)
+    if no_executor is not None and no_executor:
+        query = query.where(Incident.executor_id.is_(None))
     if overdue is not None:
         query = query.where(Incident.overdue == overdue)
+    
+    # Debug: Log SQL query
+    import logging
+    logging.info(f"Query after filters: {query}")
     
     # SLA status filter (more precise than just overdue boolean)
     if sla_status:
@@ -162,8 +188,8 @@ async def list_incidents(
             query = query.where(Incident.overdue == False)
     
     # Filter by user department (for Executors - they can only see their department's incidents)
-    if user_department_id:
-        query = query.where(Incident.department_id == user_department_id)
+    if user_dept_uuid:
+        query = query.where(Incident.department_id == user_dept_uuid)
     
     # Search by title
     if search:

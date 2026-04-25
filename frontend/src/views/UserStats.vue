@@ -158,24 +158,35 @@ function getPriorityClass(priority) {
             </div>
           </div>
           
-          <div class="flex items-center gap-3 flex-wrap">
-            <select v-model="period" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
-              <option v-for="p in periods" :key="p.value" :value="p.value">{{ p.label }}</option>
-            </select>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center gap-3 w-full lg:w-auto">
+            <div>
+              <label class="block text-xs text-slate-500 mb-1 lg:hidden">Период</label>
+              <select v-model="period" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                <option v-for="p in periods" :key="p.value" :value="p.value">{{ p.label }}</option>
+              </select>
+            </div>
             
             <!-- Specific month selector -->
-            <select v-if="period === 'specific_month'" v-model="specificMonth"
-                    class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
-              <option v-for="m in monthOptions" :key="m.value" :value="m.value">{{ m.label }}</option>
-            </select>
+            <div v-if="period === 'specific_month'">
+              <label class="block text-xs text-slate-500 mb-1 lg:hidden">Месяц</label>
+              <select v-model="specificMonth"
+                      class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                <option v-for="m in monthOptions" :key="m.value" :value="m.value">{{ m.label }}</option>
+              </select>
+            </div>
             
             <!-- Custom date inputs -->
             <template v-if="period === 'custom'">
-              <input type="date" v-model="customDateFrom"
-                     class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
-              <span class="text-slate-400">—</span>
-              <input type="date" v-model="customDateTo"
-                     class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+              <div class="sm:col-span-2 lg:flex lg:items-center lg:gap-2">
+                <label class="block text-xs text-slate-500 mb-1 lg:hidden">Период (с — по)</label>
+                <div class="flex items-center gap-2">
+                  <input type="date" v-model="customDateFrom"
+                         class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                  <span class="text-slate-400">—</span>
+                  <input type="date" v-model="customDateTo"
+                         class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                </div>
+              </div>
             </template>
           </div>
         </div>

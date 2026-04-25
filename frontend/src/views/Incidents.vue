@@ -31,6 +31,8 @@ const filters = ref({
   status_id: null,
   priority_id: null,
   department_id: null,
+  executor_id: null,
+  no_executor: null,
   overdue: null
 })
 
@@ -38,6 +40,7 @@ const filters = ref({
 const statuses = ref([])
 const priorities = ref([])
 const departments = ref([])
+const executors = ref([])
 
 const pages = computed(() => Math.ceil(total.value / limit.value))
 
@@ -54,14 +57,34 @@ const loadData = async () => {
       limit: limit.value,
       search: search.value || undefined,
       sort_field: sortField.value,
-      sort_order: sortOrder.value,
-      ...Object.fromEntries(
-        Object.entries(filters.value).filter(([_, v]) => v !== null && v !== '')
-      )
+      sort_order: sortOrder.value
     }
     
+    // Add filters
+    for (const [key, value] of Object.entries(filters.value)) {
+      if (value === null || value === '') continue
+      
+      // Handle "no-executor" special value
+      if (key === 'executor_id') {
+        if (value === 'no-executor') {
+          params.no_executor = true
+        } else {
+          params.executor_id = value
+        }
+      } else if (key === 'department_id') {
+        // department_id фильтр имеет приоритет над user_department_id
+        params.department_id = value
+      } else {
+        params[key] = value
+      }
+    }
+    
+    // Debug: Log params before sending
+    console.log('Loading incidents with params:', JSON.stringify(params, null, 2))
+    
     // Executor и Manager видят только инциденты своего отдела (Admin видит все)
-    if (authStore.user?.department_id && !authStore.isAdmin) {
+    // user_department_id отправляется только если НЕ установлен явный фильтр department_id
+    if (authStore.user?.department_id && !authStore.isAdmin && !filters.value.department_id) {
       params.user_department_id = authStore.user.department_id
     }
     
@@ -70,11 +93,12 @@ const loadData = async () => {
       params.sla_status = slaStatus.value
     }
     
-    const [incidentsRes, statusesRes, prioritiesRes, departmentsRes] = await Promise.all([
+    const [incidentsRes, statusesRes, prioritiesRes, departmentsRes, executorsRes] = await Promise.all([
       axios.get('/api/incidents', { params }),
       axios.get('/api/statuses'),
       axios.get('/api/priorities'),
-      axios.get('/api/departments', { params: { limit: 100 } })
+      axios.get('/api/departments', { params: { limit: 100 } }),
+      axios.get('/api/users', { params: { limit: 100 } })
     ])
     
     incidents.value = incidentsRes.data.data
@@ -83,7 +107,15 @@ const loadData = async () => {
     if (!statuses.value.length) {
       statuses.value = statusesRes.data
       priorities.value = prioritiesRes.data
-      departments.value = departmentsRes.data.data
+      departments.value = departmentsRes.data.data || departmentsRes.data
+      // Filter only active users for executor dropdown
+      const allUsers = executorsRes.data.data || executorsRes.data
+      // For Manager and Executor, filter users by their department
+      if (authStore.user?.department_id && !authStore.isAdmin) {
+        executors.value = (allUsers || []).filter(u => u.is_active && u.department_id === authStore.user.department_id)
+      } else {
+        executors.value = (allUsers || []).filter(u => u.is_active)
+      }
     }
   } catch (error) {
     console.error('Failed to load incidents:', error)
@@ -113,6 +145,8 @@ const clearFilters = () => {
     status_id: null,
     priority_id: null,
     department_id: null,
+    executor_id: null,
+    no_executor: null,
     overdue: null
   }
   slaStatus.value = null
@@ -239,58 +273,84 @@ const deleteIncident = async () => {
     
     <!-- Filters -->
     <div class="bg-white rounded-xl shadow-sm p-4 mb-6 border border-slate-200">
-      <!-- Row 1: Main filters -->
-      <div class="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4">
+      <!-- Row 1: Main filters - adaptive grid with wider inputs -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mb-4">
         <!-- Search -->
-        <div class="md:col-span-2">
+        <div class="sm:col-span-2 lg:col-span-2 xl:col-span-2">
+          <label class="block text-xs text-slate-500 mb-1">Поиск</label>
           <input
             v-model="search"
             type="text"
             placeholder="Поиск по заголовку..."
-            class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
             @keyup.enter="applyFilters"
           />
         </div>
         
         <!-- Status filter -->
-        <select
-          v-model="filters.status_id"
-          class="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          @change="applyFilters"
-        >
-          <option :value="null">Все статусы</option>
-          <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.name }}</option>
-        </select>
+        <div>
+          <label class="block text-xs text-slate-500 mb-1">Статус</label>
+          <select
+            v-model="filters.status_id"
+            class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+            @change="applyFilters"
+          >
+            <option :value="null">Все статусы</option>
+            <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.name }}</option>
+          </select>
+        </div>
         
         <!-- Priority filter -->
-        <select
-          v-model="filters.priority_id"
-          class="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          @change="applyFilters"
-        >
-          <option :value="null">Все приоритеты</option>
-          <option v-for="p in priorities" :key="p.id" :value="p.id">{{ p.name }}</option>
-        </select>
+        <div>
+          <label class="block text-xs text-slate-500 mb-1">Приоритет</label>
+          <select
+            v-model="filters.priority_id"
+            class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+            @change="applyFilters"
+          >
+            <option :value="null">Все приоритеты</option>
+            <option v-for="p in priorities" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+        </div>
         
-        <!-- Department filter -->
-        <select
-          v-if="canFilterByDepartment"
-          v-model="filters.department_id"
-          class="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          @change="applyFilters"
-        >
-          <option :value="null">Все отделы</option>
-          <option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</option>
-        </select>
+        <!-- Department filter (Admin only) -->
+        <div v-if="canFilterByDepartment">
+          <label class="block text-xs text-slate-500 mb-1">Отдел</label>
+          <select
+            v-model="filters.department_id"
+            class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+            @change="applyFilters"
+          >
+            <option :value="null">Все отделы</option>
+            <option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</option>
+          </select>
+        </div>
+        
+        <!-- Executor filter -->
+        <div :class="canFilterByDepartment ? '' : 'sm:col-span-2 lg:col-span-2 xl:col-span-2'">
+          <label class="block text-xs text-slate-500 mb-1">Исполнитель</label>
+          <select
+            v-model="filters.executor_id"
+            class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+            @change="applyFilters"
+          >
+            <option :value="null">Все исполнители</option>
+            <option value="no-executor">Без исполнителя</option>
+            <option v-for="e in executors" :key="e.id" :value="e.id">{{ e.full_name }}</option>
+          </select>
+        </div>
         
         <!-- SLA status filter -->
-        <select
-          v-model="slaStatus"
-          class="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          @change="applySlaFilter"
-        >
-          <option v-for="opt in slaStatusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-        </select>
+        <div :class="canFilterByDepartment ? '' : 'sm:col-span-2 lg:col-span-2 xl:col-span-2'">
+          <label class="block text-xs text-slate-500 mb-1">SLA статус</label>
+          <select
+            v-model="slaStatus"
+            class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+            @change="applySlaFilter"
+          >
+            <option v-for="opt in slaStatusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </select>
+        </div>
       </div>
       
       <!-- Row 2: Actions -->
