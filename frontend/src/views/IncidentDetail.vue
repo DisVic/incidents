@@ -998,7 +998,7 @@ const deleteComment = async (comment) => {
             </option>
           </select>
           <p class="text-xs text-slate-500 mb-4">
-            При повышении приоритета дедлайн SLA будет пересчитан автоматически.
+            При изменении приоритета дедлайн SLA будет пересчитан автоматически.
           </p>
           <div class="flex gap-2">
             <button @click="changePriority" :disabled="!selectedPriority" class="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg">

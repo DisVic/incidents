@@ -848,16 +848,12 @@ async def change_priority(
     old_priority_name = incident.priority.name if incident.priority else "N/A"
     old_deadline = incident.sla_deadline
     
-    # Check if priority is being increased or decreased
-    old_level = incident.priority.level if incident.priority else 0
-    is_upgrade = new_priority.level > old_level
-    
     # Update priority
     incident.priority_id = priority_id
     
-    # Recalculate deadline if requested and priority was increased
+    # Recalculate deadline if requested
     new_deadline = None
-    if recalculate_deadline and is_upgrade:
+    if recalculate_deadline:
         # Get SLA policy for new priority
         sla_result = await db.execute(
             select(SLAPolicy).where(SLAPolicy.priority_id == priority_id)
@@ -865,12 +861,12 @@ async def change_priority(
         sla_policy = sla_result.scalar_one_or_none()
         
         if sla_policy:
-            new_deadline = await calculate_sla_deadline(
+            new_deadline = calculate_sla_deadline(
                 incident.created_at,
                 sla_policy.resolution_hours
             )
             incident.sla_deadline = new_deadline
-            # Reset overdue flag if deadline was extended
+            # Reset overdue flag if deadline is in the future
             if new_deadline > datetime.utcnow():
                 incident.overdue = False
     
