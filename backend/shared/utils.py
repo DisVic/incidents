@@ -75,14 +75,6 @@ def calculate_sla_deadline(
     return created_at + timedelta(hours=resolution_hours)
 
 
-def get_resolution_hours_by_priority(priority_name: str) -> int:
-    """
-    Возвращает количество часов для решения по названию приоритета.
-    Если приоритет не найден, возвращает 24 часа (по умолчанию).
-    """
-    return PRIORITY_DEADLINES.get(priority_name, 24)
-
-
 def get_sla_percentage(created_at: datetime, deadline: datetime, resolved_at: datetime = None, closed_at: datetime = None) -> float:
     # Возвращает % использованного времени SLA (0-100+)
     # Если инцидент решён или закрыт, расчёт останавливается на момент решения/закрытия

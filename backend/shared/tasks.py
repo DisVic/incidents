@@ -619,6 +619,12 @@ async def _notify_incident_assigned_async(incident_id: str, executor_id: str, as
                 if assigned_by_id and str(manager.id) != assigned_by_id and manager not in recipients:
                     recipients.append(manager)
         
+        # Add initiator (notify about who will work on their incident)
+        # Инициатор всегда получает уведомление о назначении исполнителя,
+        # если только он сам не является исполнителем (в этом случае получит как исполнитель)
+        if incident.initiator and str(incident.initiator.id) != str(executor.id) and incident.initiator not in recipients:
+            recipients.append(incident.initiator)
+        
         # Add executor (always notify, unless they are the one who assigned)
         if executor and str(executor.id) != assigned_by_id and executor not in recipients:
             recipients.append(executor)
@@ -629,14 +635,28 @@ async def _notify_incident_assigned_async(incident_id: str, executor_id: str, as
         extra = {"executor_name": executor.full_name, "assigned_by_id": assigned_by_id}
         
         for user in recipients:
+            # Персонализируем сообщение в зависимости от получателя
+            if str(user.id) == str(executor.id):
+                # Исполнителю: "Вы назначены"
+                title = f"Вы назначены на инцидент #{str(incident.id)[:8]}"
+                message = f"Вы назначены исполнителем на инцидент: {incident.title}"
+            elif str(user.id) == str(incident.initiator_id):
+                # Инициатору: "Назначен исполнитель <имя>"
+                title = f"На инцидент назначен исполнитель"
+                message = f"На ваш инцидент \"{incident.title}\" назначен исполнитель: {executor.full_name}"
+            else:
+                # Админу/Менеджеру: "Назначен исполнитель <имя>"
+                title = f"Назначен исполнитель: {executor.full_name}"
+                message = f"На инцидент \"{incident.title}\" назначен исполнитель: {executor.full_name}"
+            
             await send_notification_with_settings(
                 db=db,
                 user=user,
                 incident=incident,
                 event_type="assigned_executor",
                 email_type="assigned_executor",
-                title=f"Назначен на инцидент #{str(incident.id)[:8]}",
-                message=f"Вы назначены исполнителем на инцидент: {incident.title}",
+                title=title,
+                message=message,
                 extra=extra
             )
         
@@ -655,53 +675,6 @@ def notify_status_changed(incident_id: str, old_status: str, new_status: str,
     import asyncio
     return asyncio.run(_notify_status_changed_async(
         incident_id, old_status, new_status, comment, changed_by_id
-    ))
-
-
-@celery_app.task(name="shared.tasks.notify_new_comment")
-def notify_new_comment(incident_id: str, author_id: str, comment_content: str):
-    """
-    Уведомление о новом комментарии.
-    
-    Получатели: инициатор и исполнитель (кроме автора).
-    """
-    import asyncio
-    return asyncio.run(_notify_new_comment_async(incident_id, author_id, comment_content))
-
-
-@celery_app.task(name="shared.tasks.notify_incident_resolved")
-def notify_incident_resolved(incident_id: str, resolved_by_id: str, comment: str = ""):
-    """
-    Уведомление о решении инцидента.
-    
-    Получатели: инициатор, Manager отдела, Admin (кроме решившего).
-    """
-    import asyncio
-    return asyncio.run(_notify_incident_resolved_async(incident_id, resolved_by_id, comment))
-
-
-@celery_app.task(name="shared.tasks.notify_incident_closed")
-def notify_incident_closed(incident_id: str, closed_by_id: str):
-    """
-    Уведомление о закрытии инцидента.
-    
-    Получатели: инициатор (кроме закрывшего).
-    """
-    import asyncio
-    return asyncio.run(_notify_incident_closed_async(incident_id, closed_by_id))
-
-
-@celery_app.task(name="shared.tasks.notify_priority_changed")
-def notify_priority_changed(incident_id: str, old_priority: str, new_priority: str, 
-                             new_deadline: str = None, changed_by_id: str = None):
-    """
-    Уведомление об изменении приоритета.
-    
-    Получатели: инициатор и исполнитель (кроме изменившего).
-    """
-    import asyncio
-    return asyncio.run(_notify_priority_changed_async(
-        incident_id, old_priority, new_priority, new_deadline, changed_by_id
     ))
 
 
@@ -755,13 +728,6 @@ async def _notify_status_changed_async(incident_id: str, old_status: str,
         
         await db.commit()
         return {"sent": True, "recipients": len(recipients)}
-
-
-@celery_app.task(name="shared.tasks.notify_new_comment")
-def notify_new_comment(incident_id: str, author_id: str, comment_content: str):
-    # Уведомляет о новом комментарии: инициатор и исполнитель (кроме автора)
-    import asyncio
-    return asyncio.run(_notify_new_comment_async(incident_id, author_id, comment_content))
 
 
 async def _notify_new_comment_async(incident_id: str, author_id: str, comment_content: str):
@@ -827,13 +793,6 @@ async def _notify_new_comment_async(incident_id: str, author_id: str, comment_co
         return {"sent": True, "recipients": len(recipients)}
 
 
-@celery_app.task(name="shared.tasks.notify_incident_resolved")
-def notify_incident_resolved(incident_id: str, resolved_by_id: str, comment: str = ""):
-    # Уведомляет о решении: инициатор, Manager отдела, Admin (кроме решившего)
-    import asyncio
-    return asyncio.run(_notify_incident_resolved_async(incident_id, resolved_by_id, comment))
-
-
 async def _notify_incident_resolved_async(incident_id: str, resolved_by_id: str, comment: str):
     """Send notification about resolved incident"""
     async with async_session() as db:
@@ -894,13 +853,6 @@ async def _notify_incident_resolved_async(incident_id: str, resolved_by_id: str,
         return {"sent": True, "recipients": len(recipients)}
 
 
-@celery_app.task(name="shared.tasks.notify_incident_closed")
-def notify_incident_closed(incident_id: str, closed_by_id: str):
-    """Notify about closed incident - initiator (excluding closer)"""
-    import asyncio
-    return asyncio.run(_notify_incident_closed_async(incident_id, closed_by_id))
-
-
 async def _notify_incident_closed_async(incident_id: str, closed_by_id: str):
     """Send notification about closed incident"""
     async with async_session() as db:
@@ -950,9 +902,14 @@ async def _notify_incident_closed_async(incident_id: str, closed_by_id: str):
 
 
 @celery_app.task(name="shared.tasks.notify_priority_changed")
-def notify_priority_changed(incident_id: str, old_priority: str, new_priority: str, 
-                             new_deadline: str = None, changed_by_id: str = None):
-    """Notify about priority change"""
+def notify_priority_changed(incident_id: str, old_priority: str, 
+                             new_priority: str, new_deadline: str = None,
+                             changed_by_id: str = None):
+    """
+    Уведомление об изменении приоритета.
+    
+    Получатели: инициатор и исполнитель (кроме того, кто изменил).
+    """
     import asyncio
     return asyncio.run(_notify_priority_changed_async(
         incident_id, old_priority, new_priority, new_deadline, changed_by_id

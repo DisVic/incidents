@@ -79,9 +79,6 @@ const loadData = async () => {
       }
     }
     
-    // Debug: Log params before sending
-    console.log('Loading incidents with params:', JSON.stringify(params, null, 2))
-    
     // Executor и Manager видят только инциденты своего отдела (Admin видит все)
     // user_department_id отправляется только если НЕ установлен явный фильтр department_id
     if (authStore.user?.department_id && !authStore.isAdmin && !filters.value.department_id) {

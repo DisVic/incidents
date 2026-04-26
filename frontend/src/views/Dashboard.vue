@@ -357,7 +357,7 @@ function getStatusBadgeClass(statusName) {
 
 <template>
   <div>
-    <!-- Header with filters and export -->
+    <!-- Header with filters -->
     <div class="bg-white rounded-xl shadow-sm p-4 mb-6 border border-slate-200">
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <h1 class="text-2xl font-bold text-slate-800">Дашборд</h1>

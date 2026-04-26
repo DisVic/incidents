@@ -31,7 +31,7 @@ const playNotificationSound = () => {
     oscillator.start(audioContext.currentTime)
     oscillator.stop(audioContext.currentTime + 0.5)
   } catch (e) {
-    console.log('Could not play sound')
+    // Silent fail - audio not critical
   }
 }
 

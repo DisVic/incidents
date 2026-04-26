@@ -4,7 +4,9 @@ API инцидентов — создание, назначение, измен�
 Endpoint'ы:
 - GET /incidents — список с фильтрацией, сортировкой, пагинацией
 - GET /incidents/{id} — данные инцидента
-- PUT /incidents/{id} — редактирование инцидента (инициатором)
+- PUT /incidents/{id} — редактирование инцидента:
+    * Инициатор: может менять заголовок, описание, категорию, приоритет, отдел (если статус "Новый" и нет исполнителя)
+    * Admin/Manager: могут менять приоритет и отдел (если статус не "Решён"/"Закрыт")
 - POST /incidents — создание инцидента
 - POST /incidents/{id}/take — взять в работу
 - POST /incidents/{id}/assign — назначить исполнителя
@@ -133,10 +135,6 @@ async def list_incidents(
     executor_uuid = uuid_module.UUID(executor_id) if executor_id else None
     user_dept_uuid = uuid_module.UUID(user_department_id) if user_department_id else None
     
-    # Debug logging
-    import logging
-    logging.info(f"list_incidents called with params: page={page}, limit={limit}, executor_id={executor_id}, executor_uuid={executor_uuid}, department_id={department_id}, user_department_id={user_department_id}")
-    
     query = select(Incident).options(
         selectinload(Incident.status),
         selectinload(Incident.priority),
@@ -153,18 +151,11 @@ async def list_incidents(
     if department_uuid:
         query = query.where(Incident.department_id == department_uuid)
     if executor_uuid:
-        # Debug logging
-        import logging
-        logging.info(f"Filtering by executor_id: {executor_uuid} (type: {type(executor_uuid)})")
         query = query.where(Incident.executor_id == executor_uuid)
     if no_executor is not None and no_executor:
         query = query.where(Incident.executor_id.is_(None))
     if overdue is not None:
         query = query.where(Incident.overdue == overdue)
-    
-    # Debug: Log SQL query
-    import logging
-    logging.info(f"Query after filters: {query}")
     
     # SLA status filter (more precise than just overdue boolean)
     if sla_status:
@@ -306,21 +297,18 @@ async def update_incident(
     incident_id: str, 
     data: IncidentUpdate, 
     user_id: str = Query(...),
+    user_role: str = Query(None),  # Роль пользователя (Admin/Manager)
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Редактирование инцидента инициатором.
+    Редактирование инцидента.
     
-    Инициатор может изменить:
-    - Заголовок и описание
-    - Категорию
-    - Отдел
-    - Приоритет (с автоматическим пересчётом SLA-дедлайна)
+    Права доступа:
+    - Инициатор: может менять заголовок, описание, категорию, приоритет, отдел (если статус "Новый" и нет исполнителя)
+    - Admin/Manager: могут менять отдел (если статус не "Решён"/"Закрыт")
     
     Ограничения:
-    - Только инициатор может редактировать
     - Нельзя редактировать закрытые/решённые инциденты
-    - Нельзя редактировать, если инцидент взят в работу (статус "В работе")
     """
     # Получаем инцидент
     result = await db.execute(
@@ -338,71 +326,102 @@ async def update_incident(
     if not incident:
         raise HTTPException(status_code=404, detail="Инцидент не найден")
     
-    # Проверяем, что пользователь - инициатор
-    if str(incident.initiator_id) != user_id:
-        raise HTTPException(status_code=403, detail="Только инициатор может редактировать инцидент")
-    
-    # Проверяем статус - нельзя редактировать решённые/закрытые или в работе
+    # Проверяем статус - нельзя редактировать решённые/закрытые
     if incident.status.name in ["Решён", "Закрыт"]:
         raise HTTPException(
             status_code=400,
             detail=f"Нельзя редактировать инцидент в статусе '{incident.status.name}'"
         )
     
-    if incident.status.name == "В работе":
+    # Определяем права доступа
+    is_initiator = str(incident.initiator_id) == user_id
+    is_admin = user_role in ["Admin", "admin", "Admin"]
+    is_manager = user_role in ["Manager", "manager"]
+    
+    # Проверка прав
+    if not is_initiator and not is_admin and not is_manager:
         raise HTTPException(
-            status_code=400,
-            detail="Нельзя редактировать инцидент, который уже взят в работу"
+            status_code=403,
+            detail=f"Нет прав на редактирование. Вы: {user_role or 'гость'}, инициатор: {is_initiator}"
         )
+    
+    # Инициатор может редактировать только если статус "Новый" и нет исполнителя
+    if is_initiator and not is_admin and not is_manager:
+        if incident.status.name != "Новый":
+            raise HTTPException(
+                status_code=400,
+                detail="Инициатор может редактировать инцидент только в статусе 'Новый'"
+            )
+        if incident.executor_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Инициатор не может редактировать инцидент, у которого уже есть исполнитель"
+            )
+    
+    # Admin/Manager могут менять отдел при любом статусе (кроме Решён/Закрыт)
+    # Инициатор может менять отдел только если статус "Новый"
+    can_change_department = is_admin or is_manager or (is_initiator and incident.status.name == "Новый")
     
     # Собираем изменения для истории
     changes = []
     old_department_name = incident.department.name if incident.department else "—"
     
-    # Обновляем поля
-    if data.title is not None and data.title != incident.title:
-        changes.append(f"Заголовок: {incident.title} → {data.title}")
-        incident.title = data.title
-    
-    if data.description is not None and data.description != incident.description:
-        changes.append("Описание обновлено")
-        incident.description = data.description
-    
-    if data.category_id is not None and data.category_id != incident.category_id:
-        # Получаем новую категорию
-        cat_result = await db.execute(select(Category).where(Category.id == data.category_id))
-        new_cat = cat_result.scalar_one_or_none()
-        if new_cat:
-            old_cat_name = incident.category.name if incident.category else "—"
-            changes.append(f"Категория: {old_cat_name} → {new_cat.name}")
-            incident.category_id = data.category_id
-    
-    if data.priority_id is not None and data.priority_id != incident.priority_id:
-        # Получаем новый приоритет и пересчитываем SLA
-        pri_result = await db.execute(select(Priority).where(Priority.id == data.priority_id))
-        new_priority = pri_result.scalar_one_or_none()
-        if new_priority:
-            old_priority_name = incident.priority.name if incident.priority else "—"
-            changes.append(f"Приоритет: {old_priority_name} → {new_priority.name}")
-            
-            # Пересчитываем SLA-дедлайн
-            sla_result = await db.execute(select(SLAPolicy).where(SLAPolicy.priority_id == data.priority_id))
-            sla_policy = sla_result.scalar_one_or_none()
-            
-            if sla_policy:
-                old_deadline = incident.sla_deadline
-                incident.sla_deadline = calculate_sla_deadline(incident.created_at, sla_policy.resolution_hours)
-                incident.priority_id = data.priority_id
+    # Обновляем поля - ТОЛЬКО если есть права
+    # Инициатор может менять всё, Admin/Manager - только отдел
+    if is_initiator and not is_admin and not is_manager:
+        # Инициатор может менять заголовок, описание, категорию, приоритет
+        if data.title is not None and data.title != incident.title:
+            changes.append(f"Заголовок: {incident.title} → {data.title}")
+            incident.title = data.title
+        
+        if data.description is not None and data.description != incident.description:
+            changes.append("Описание обновлено")
+            incident.description = data.description
+        
+        if data.category_id is not None and data.category_id != incident.category_id:
+            # Получаем новую категорию
+            cat_result = await db.execute(select(Category).where(Category.id == data.category_id))
+            new_cat = cat_result.scalar_one_or_none()
+            if new_cat:
+                old_cat_name = incident.category.name if incident.category else "—"
+                changes.append(f"Категория: {old_cat_name} → {new_cat.name}")
+                incident.category_id = data.category_id
+        
+        if data.priority_id is not None and data.priority_id != incident.priority_id:
+            # Получаем новый приоритет и пересчитываем SLA
+            pri_result = await db.execute(select(Priority).where(Priority.id == data.priority_id))
+            new_priority = pri_result.scalar_one_or_none()
+            if new_priority:
+                old_priority_name = incident.priority.name if incident.priority else "—"
+                changes.append(f"Приоритет: {old_priority_name} → {new_priority.name}")
                 
-                # Сбрасываем overdue, если новый дедлайн в будущем
-                if incident.sla_deadline > datetime.utcnow():
-                    incident.overdue = False
+                # Пересчитываем SLA-дедлайн
+                sla_result = await db.execute(select(SLAPolicy).where(SLAPolicy.priority_id == data.priority_id))
+                sla_policy = sla_result.scalar_one_or_none()
                 
-                changes.append(f"Дедлайн: {old_deadline.strftime('%d.%m.%Y %H:%M')} → {incident.sla_deadline.strftime('%d.%m.%Y %H:%M')}")
-            else:
-                incident.priority_id = data.priority_id
+                if sla_policy:
+                    old_deadline = incident.sla_deadline
+                    incident.sla_deadline = calculate_sla_deadline(incident.created_at, sla_policy.resolution_hours)
+                    incident.priority_id = data.priority_id
+                    
+                    # Сбрасываем overdue, если новый дедлайн в будущем
+                    if incident.sla_deadline > datetime.utcnow():
+                        incident.overdue = False
+                    
+                    changes.append(f"Дедлайн: {old_deadline.strftime('%d.%m.%Y %H:%M')} → {incident.sla_deadline.strftime('%d.%m.%Y %H:%M')}")
+                else:
+                    incident.priority_id = data.priority_id
+    else:
+        # Admin/Manager могут менять ТОЛЬКО отдел
+        pass  # priority_id и другие поля игнорируем
     
     if data.department_id is not None and data.department_id != incident.department_id:
+        if not can_change_department:
+            raise HTTPException(
+                status_code=403,
+                detail="Отдел можно изменить только если статус 'Новый' или вы Admin/Manager"
+            )
+    
         # Получаем новый отдел
         dept_result = await db.execute(select(Department).where(Department.id == data.department_id))
         new_dept = dept_result.scalar_one_or_none()
@@ -410,23 +429,23 @@ async def update_incident(
             changes.append(f"Отдел: {old_department_name} → {new_dept.name}")
             incident.department_id = data.department_id
             
-            # Если исполнитель из старого отдела - сбрасываем назначение
+            # Если исполнитель из другого отдела - сбрасываем назначение
             if incident.executor_id:
                 exec_result = await db.execute(select(User).where(User.id == incident.executor_id))
                 executor = exec_result.scalar_one_or_none()
-                if executor and executor.department_id == incident.department_id:
+                if executor and str(executor.department_id) != data.department_id:
                     # Сбрасываем исполнителя
                     old_executor_name = executor.full_name
                     incident.executor_id = None
                     incident.assigned_at = None
                     
-                    # Если статус был "Назначен", возвращаем в "Новый"
-                    if incident.status.name == "Назначен":
+                    # Если статус был "Назначен" или "В работе", возвращаем в "Новый"
+                    if incident.status.name in ["Назначен", "В работе"]:
                         new_status = await get_status_by_name(db, "Новый")
                         if new_status:
                             incident.status_id = new_status.id
-                            changes.append(f"Исполнитель сброшен: {old_executor_name} (из старого отдела)")
-                            changes.append(f"Статус: Назначен → Новый")
+                            changes.append(f"Исполнитель сброшен: {old_executor_name} (из другого отдела)")
+                            changes.append(f"Статус: {incident.status.name} → Новый")
     
     # Если не было изменений
     if not changes:
@@ -438,7 +457,7 @@ async def update_incident(
         user_id=uuid.UUID(user_id),
         previous_status_id=incident.status_id,
         new_status_id=incident.status_id,
-        comment="Инцидент отредактирован инициатором: " + "; ".join(changes)
+        comment="Инцидент отредактирован: " + "; ".join(changes)
     )
     db.add(history)
     
@@ -1247,83 +1266,6 @@ async def reset_executor_incidents(user_id: str, reason: str = "user_deactivated
     await db.commit()
     
     return {"reset_count": reset_count, "message": f"Reset {reset_count} incidents to 'New' status"}
-
-
-@router.post("/{incident_id}/department")
-async def change_department(
-    incident_id: str, 
-    department_id: str, 
-    user_id: str = None,
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Изменить отдел инцидента (только Manager/Admin).
-    
-    - Если исполнитель из другого отдела — сбрасывает назначение
-    """
-    result = await db.execute(
-        select(Incident)
-        .options(
-            selectinload(Incident.department),
-            selectinload(Incident.executor),
-            selectinload(Incident.status)
-        )
-        .where(Incident.id == incident_id)
-    )
-    incident = result.scalar_one_or_none()
-    
-    if not incident:
-        raise HTTPException(status_code=404, detail="Инцидент не найден")
-    
-    # Get new department
-    new_dept_result = await db.execute(
-        select(Department).where(Department.id == department_id)
-    )
-    new_department = new_dept_result.scalar_one_or_none()
-    
-    if not new_department:
-        raise HTTPException(status_code=404, detail="Отдел не найден")
-    
-    old_department_name = incident.department.name if incident.department else "Без отдела"
-    old_department_id = incident.department_id
-    
-    # Update department
-    incident.department_id = department_id
-    
-    # If executor is from old department, reset executor
-    executor_reset = False
-    if incident.executor_id and incident.executor:
-        if incident.executor.department_id == old_department_id:
-            incident.executor_id = None
-            incident.assigned_at = None
-            
-            # Reset status to "Новый" if was "Назначен"
-            if incident.status.name == "Назначен":
-                new_status = await get_status_by_name(db, "Новый")
-                if new_status:
-                    incident.status_id = new_status.id
-            
-            executor_reset = True
-    
-    # Add history entry
-    history = IncidentHistory(
-        incident_id=incident.id,
-        user_id=uuid.UUID(user_id) if user_id else None,
-        previous_status_id=incident.status_id,
-        new_status_id=incident.status_id,
-        comment=f"Отдел изменён: {old_department_name} → {new_department.name}" + 
-                (" (исполнитель сброшен)" if executor_reset else "")
-    )
-    db.add(history)
-    
-    await db.commit()
-    
-    return {
-        "message": "Отдел изменён",
-        "old_department": old_department_name,
-        "new_department": new_department.name,
-        "executor_reset": executor_reset
-    }
 
 
 @router.delete("/{incident_id}")

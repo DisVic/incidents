@@ -68,8 +68,10 @@ const canEdit = computed(() => {
 // Инициатор может редактировать свои инциденты
 const canEditAsInitiator = computed(() => {
   if (!incident.value || !authStore.user) return false
+  // Инициатор может редактировать только если статус "Новый" и нет исполнителя
   return incident.value.initiator_id === authStore.user.id &&
-         !['Решён', 'Закрыт', 'В работе'].includes(incident.value.status_name)
+         incident.value.status_name === 'Новый' &&
+         !incident.value.executor_id
 })
 
 const showEditModal = ref(false)
@@ -99,7 +101,8 @@ const openEditModal = () => {
       categories.value = res.data
     })
   }
-  if (!departments.value.length && authStore.isAdmin) {
+  // Load departments for Admin/Manager OR for initiator (to change department)
+  if (!departments.value.length && (authStore.user?.role_name === 'Admin' || authStore.user?.role_name === 'Manager' || canEditAsInitiator.value)) {
     axios.get('/api/departments', { params: { limit: 100 } }).then(res => {
       departments.value = res.data.data || res.data
     })
@@ -110,19 +113,36 @@ const saveEdit = async () => {
   editLoading.value = true
   try {
     const payload = {}
-    if (editForm.value.title !== incident.value.title) payload.title = editForm.value.title
-    if (editForm.value.description !== incident.value.description) payload.description = editForm.value.description
-    if (editForm.value.category_id !== incident.value.category_id) payload.category_id = editForm.value.category_id
-    if (editForm.value.priority_id !== incident.value.priority_id) payload.priority_id = editForm.value.priority_id
-    if (editForm.value.department_id !== incident.value.department_id) payload.department_id = editForm.value.department_id
+    const isManagerOrAdmin = authStore.user?.role_name === 'Admin' || authStore.user?.role_name === 'Manager'
+    
+    // Manager/Admin отправляют ТОЛЬКО отдел
+    if (isManagerOrAdmin) {
+      if (editForm.value.department_id !== incident.value.department_id) {
+        payload.department_id = editForm.value.department_id
+      }
+    } else {
+      // Инициатор отправляет все поля
+      if (editForm.value.title !== incident.value.title) payload.title = editForm.value.title
+      if (editForm.value.description !== incident.value.description) payload.description = editForm.value.description
+      if (editForm.value.category_id !== incident.value.category_id) payload.category_id = editForm.value.category_id
+      if (editForm.value.priority_id !== incident.value.priority_id) payload.priority_id = editForm.value.priority_id
+      if (editForm.value.department_id !== incident.value.department_id) payload.department_id = editForm.value.department_id
+    }
+    
+    // Определяем роль для backend
+    const userRole = authStore.user?.role_name || 'User'
     
     await axios.put(`/api/incidents/${route.params.id}`, payload, {
-      params: { user_id: authStore.user.id }
+      params: {
+        user_id: authStore.user.id,
+        user_role: userRole
+      }
     })
     showEditModal.value = false
     await loadData()
     await showAlert('Инцидент обновлён')
   } catch (err) {
+    console.error('Edit error:', err.response?.data)
     await showAlert(getErrorMessage(err))
   } finally {
     editLoading.value = false
@@ -289,7 +309,7 @@ const loadData = async () => {
     }
     
     // Load reference data for actions
-    if (canAssign.value || canEdit.value) {
+    if (canAssign.value || canEdit.value || canEditAsInitiator.value) {
       const [usersRes, statusesRes, prioritiesRes] = await Promise.all([
         axios.get('/api/users', { params: { limit: 100 } }),
         axios.get('/api/statuses'),
@@ -298,6 +318,13 @@ const loadData = async () => {
       users.value = usersRes.data.data
       statuses.value = statusesRes.data
       priorities.value = prioritiesRes.data
+    }
+    
+    // Load departments for Admin/Manager or initiator edit
+    if (authStore.user?.role_name === 'Admin' || authStore.user?.role_name === 'Manager' || canEditAsInitiator.value) {
+      axios.get('/api/departments', { params: { limit: 100 } }).then(res => {
+        departments.value = res.data.data || res.data
+      })
     }
   } catch (err) {
     console.error('Failed to load incident:', err)
@@ -927,6 +954,14 @@ const deleteComment = async (comment) => {
               </button>
               
               <button
+                v-if="(authStore.user?.role_name === 'Admin' || authStore.user?.role_name === 'Manager') && !['Решён', 'Закрыт'].includes(incident?.status_name)"
+                @click="openEditModal"
+                class="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+              >
+                Изменить отдел
+              </button>
+              
+              <button
                 v-if="canTake"
                 @click="takeIncident"
                 class="w-full px-4 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
@@ -1186,13 +1221,16 @@ const deleteComment = async (comment) => {
         </div>
       </div>
       
-      <!-- Edit Incident Modal (for initiator) -->
+      <!-- Edit Incident Modal -->
       <div v-if="showEditModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
         <div class="bg-white rounded-xl p-6 w-full max-w-lg">
-          <h3 class="text-lg font-semibold mb-4">Редактировать инцидент</h3>
+          <h3 class="text-lg font-semibold mb-4">
+            {{ canEditAsInitiator ? 'Редактировать инцидент' : 'Изменить отдел' }}
+          </h3>
           
           <div class="space-y-4">
-            <div>
+            <!-- Show title/description/category only for initiator editing new incident -->
+            <div v-if="canEditAsInitiator">
               <label class="block text-sm font-medium text-slate-700 mb-1">Заголовок</label>
               <input
                 v-model="editForm.title"
@@ -1202,7 +1240,7 @@ const deleteComment = async (comment) => {
               />
             </div>
             
-            <div>
+            <div v-if="canEditAsInitiator">
               <label class="block text-sm font-medium text-slate-700 mb-1">Описание</label>
               <textarea
                 v-model="editForm.description"
@@ -1212,7 +1250,7 @@ const deleteComment = async (comment) => {
               ></textarea>
             </div>
             
-            <div>
+            <div v-if="canEditAsInitiator">
               <label class="block text-sm font-medium text-slate-700 mb-1">Категория</label>
               <select
                 v-model="editForm.category_id"
@@ -1223,7 +1261,7 @@ const deleteComment = async (comment) => {
               </select>
             </div>
             
-            <div>
+            <div v-if="canEditAsInitiator">
               <label class="block text-sm font-medium text-slate-700 mb-1">Приоритет</label>
               <select
                 v-model="editForm.priority_id"
@@ -1238,7 +1276,7 @@ const deleteComment = async (comment) => {
               </p>
             </div>
             
-            <div v-if="authStore.isAdmin">
+            <div v-if="canEditAsInitiator || authStore.user?.role_name === 'Admin' || authStore.user?.role_name === 'Manager'">
               <label class="block text-sm font-medium text-slate-700 mb-1">Отдел</label>
               <select
                 v-model="editForm.department_id"
@@ -1246,8 +1284,11 @@ const deleteComment = async (comment) => {
               >
                 <option v-for="dept in departments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
               </select>
-              <p class="text-xs text-amber-600 mt-1">
-                ⚠️ При смене отдела исполнитель может быть сброшен
+              <p v-if="canEditAsInitiator" class="text-xs text-amber-600 mt-1">
+                ⚠️ При смене отдела исполнитель будет сброшен
+              </p>
+              <p v-if="authStore.user?.role_name === 'Admin' || authStore.user?.role_name === 'Manager'" class="text-xs text-amber-600 mt-1">
+                ⚠️ При смене отдела исполнитель из другого отдела будет сброшен
               </p>
             </div>
           </div>
