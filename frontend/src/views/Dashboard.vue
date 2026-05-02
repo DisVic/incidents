@@ -18,6 +18,7 @@ const periods = [
   { value: 'last_month', label: 'Прошлый месяц' },
   { value: 'quarter', label: 'Квартал' },
   { value: 'year', label: 'Год' },
+  { value: 'all', label: 'Весь период' },
   { value: 'custom', label: 'Свой период' }
 ]
 const customDateFrom = ref('')
@@ -25,6 +26,14 @@ const customDateTo = ref('')
 
 // Can filter by department (only Admin)
 const canFilterByDepartment = computed(() => authStore.isAdmin)
+
+// Format date using local timezone (avoids UTC day-shift bug with toISOString)
+function formatDateLocal(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 // Compute date range from period
 const dateRange = computed(() => {
@@ -48,6 +57,8 @@ const dateRange = computed(() => {
       from = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
       to = now
       break
+    case 'all':
+      return { date_from: null, date_to: null }
     case 'custom':
       if (customDateFrom.value && customDateTo.value) {
         from = new Date(customDateFrom.value)
@@ -64,8 +75,8 @@ const dateRange = computed(() => {
   }
   
   return {
-    date_from: from.toISOString().split('T')[0],
-    date_to: to.toISOString().split('T')[0]
+    date_from: formatDateLocal(from),
+    date_to: formatDateLocal(to)
   }
 })
 
@@ -160,9 +171,10 @@ function resetAccordions() {
 async function loadDashboard() {
   loading.value = true
   try {
-    const params = {
-      date_from: dateRange.value.date_from,
-      date_to: dateRange.value.date_to
+    const params = {}
+    if (dateRange.value.date_from && dateRange.value.date_to) {
+      params.date_from = dateRange.value.date_from
+      params.date_to = dateRange.value.date_to
     }
     if (effectiveDeptId.value) {
       params.department_id = effectiveDeptId.value
@@ -178,8 +190,8 @@ async function loadDashboard() {
       axios.get('/api/incidents', { params: incidentParams }),
       axios.get('/api/reports/sla-stats', { params }),
       axios.get('/api/reports/status-stats', { params }),
-      axios.get('/api/reports/activity', { params }),
-      axios.get('/api/reports/executors', { params: { ...params, limit: 5 } })
+      axios.get('/api/reports/activity', { params: { ...params, days: 14 } }),
+      axios.get('/api/reports/executors', { params: { ...params, limit: 5, days: 30 } })
     ])
     stats.value = dashboardRes.data
     recentIncidents.value = incidentsRes.data.data || []
@@ -198,9 +210,10 @@ async function loadDashboard() {
 async function loadExecutorsData() {
   if (executorsData.value.length > 0) return
   try {
-    const params = {
-      date_from: dateRange.value.date_from,
-      date_to: dateRange.value.date_to
+    const params = {}
+    if (dateRange.value.date_from && dateRange.value.date_to) {
+      params.date_from = dateRange.value.date_from
+      params.date_to = dateRange.value.date_to
     }
     if (effectiveDeptId.value) params.department_id = effectiveDeptId.value
     // Manager sees own department executors + all Admins
@@ -217,9 +230,10 @@ async function loadExecutorsData() {
 async function loadDepartmentsData() {
   if (departmentsData.value.length > 0) return
   try {
-    const params = {
-      date_from: dateRange.value.date_from,
-      date_to: dateRange.value.date_to
+    const params = {}
+    if (dateRange.value.date_from && dateRange.value.date_to) {
+      params.date_from = dateRange.value.date_from
+      params.date_to = dateRange.value.date_to
     }
     if (effectiveDeptId.value) params.department_id = effectiveDeptId.value
     const res = await axios.get('/api/reports/departments', { params })
@@ -232,9 +246,10 @@ async function loadDepartmentsData() {
 async function loadSLAData() {
   if (slaData.value.total_incidents) return
   try {
-    const params = {
-      date_from: dateRange.value.date_from,
-      date_to: dateRange.value.date_to
+    const params = {}
+    if (dateRange.value.date_from && dateRange.value.date_to) {
+      params.date_from = dateRange.value.date_from
+      params.date_to = dateRange.value.date_to
     }
     if (effectiveDeptId.value) params.department_id = effectiveDeptId.value
     const res = await axios.get('/api/reports/sla-analytics', { params })
@@ -247,10 +262,10 @@ async function loadSLAData() {
 async function loadOverdueIncidents() {
   if (overdueIncidents.value.length > 0) return
   try {
-    const params = { 
-      limit: 20,
-      date_from: dateRange.value.date_from,
-      date_to: dateRange.value.date_to
+    const params = { limit: 20 }
+    if (dateRange.value.date_from && dateRange.value.date_to) {
+      params.date_from = dateRange.value.date_from
+      params.date_to = dateRange.value.date_to
     }
     if (effectiveDeptId.value) params.department_id = effectiveDeptId.value
     const res = await axios.get('/api/reports/overdue-incidents', { params })

@@ -188,14 +188,58 @@ async def dashboard(
         result = await db.execute(query)
         resolved_count = result.scalar()
     
-    # Overdue
-    query = select(func.count()).select_from(Incident).where(Incident.overdue == True)
-    if dept_filter:
-        query = query.where(*dept_filter)
-    if date_filter:
-        query = query.where(*date_filter)
-    overdue_result = await db.execute(query)
-    overdue_count = overdue_result.scalar()
+    # Get status IDs for SLA overdue filtering
+    active_statuses_result = await db.execute(
+        select(Status.id).where(Status.name.in_(["Новый", "Назначен", "В работе"]))
+    )
+    dash_active_ids = [row[0] for row in active_statuses_result.fetchall()]
+
+    closed_statuses_result = await db.execute(
+        select(Status.id).where(Status.name.in_(["Решён", "Закрыт"]))
+    )
+    dash_closed_ids = [row[0] for row in closed_statuses_result.fetchall()]
+
+    # Overdue: active by sla_deadline, closed by resolved_at / closed_at
+    active_sla_filter = []
+    closed_resolved_filter = []
+    if from_date:
+        active_sla_filter.append(Incident.sla_deadline >= from_date)
+        closed_resolved_filter.append(
+            or_(Incident.resolved_at >= from_date, Incident.closed_at >= from_date)
+        )
+    if to_date:
+        active_sla_filter.append(Incident.sla_deadline <= to_date)
+        closed_resolved_filter.append(
+            or_(Incident.resolved_at <= to_date, Incident.closed_at <= to_date)
+        )
+    
+    active_overdue_count = 0
+    if dash_active_ids:
+        query = select(func.count()).select_from(Incident).where(
+            Incident.status_id.in_(dash_active_ids),
+            or_(Incident.overdue == True, Incident.was_overdue == True)
+        )
+        if dept_filter:
+            query = query.where(*dept_filter)
+        if active_sla_filter:
+            query = query.where(*active_sla_filter)
+        result = await db.execute(query)
+        active_overdue_count = result.scalar() or 0
+
+    closed_overdue_count = 0
+    if dash_closed_ids:
+        query = select(func.count()).select_from(Incident).where(
+            Incident.status_id.in_(dash_closed_ids),
+            Incident.was_overdue == True
+        )
+        if dept_filter:
+            query = query.where(*dept_filter)
+        if closed_resolved_filter:
+            query = query.where(*closed_resolved_filter)
+        result = await db.execute(query)
+        closed_overdue_count = result.scalar() or 0
+
+    overdue_count = active_overdue_count + closed_overdue_count
     
     # Today (only if no custom date range)
     today_count = 0
@@ -281,13 +325,6 @@ async def sla_stats(
     if department_id:
         dept_filter = [Incident.department_id == uuid.UUID(department_id)]
     
-    # Date range filter
-    date_filter = []
-    if from_date:
-        date_filter.append(Incident.created_at >= from_date)
-    if to_date:
-        date_filter.append(Incident.created_at <= to_date)
-    
     # Get closed incidents (resolved or closed)
     closed_result = await db.execute(
         select(Status.id).where(Status.name.in_(["Решён", "Закрыт"]))
@@ -300,6 +337,20 @@ async def sla_stats(
     )
     active_ids = [row[0] for row in active_result.fetchall()]
     
+    # Date filters: active by sla_deadline, closed by resolved_at / closed_at
+    active_date_filter = []
+    closed_date_filter = []
+    if from_date:
+        active_date_filter.append(Incident.sla_deadline >= from_date)
+        closed_date_filter.append(
+            or_(Incident.resolved_at >= from_date, Incident.closed_at >= from_date)
+        )
+    if to_date:
+        active_date_filter.append(Incident.sla_deadline <= to_date)
+        closed_date_filter.append(
+            or_(Incident.resolved_at <= to_date, Incident.closed_at <= to_date)
+        )
+
     # Overdue count: active with (overdue=True OR was_overdue=True) OR closed with was_overdue=True
     # Active overdue
     active_overdue_count = 0
@@ -310,11 +361,11 @@ async def sla_stats(
         )
         if dept_filter:
             query = query.where(*dept_filter)
-        if date_filter:
-            query = query.where(*date_filter)
+        if active_date_filter:
+            query = query.where(*active_date_filter)
         result = await db.execute(query)
         active_overdue_count = result.scalar() or 0
-    
+
     # Closed overdue (was_overdue=True)
     closed_overdue_count = 0
     if closed_ids:
@@ -324,13 +375,13 @@ async def sla_stats(
         )
         if dept_filter:
             query = query.where(*dept_filter)
-        if date_filter:
-            query = query.where(*date_filter)
+        if closed_date_filter:
+            query = query.where(*closed_date_filter)
         result = await db.execute(query)
         closed_overdue_count = result.scalar() or 0
-    
+
     overdue_count = active_overdue_count + closed_overdue_count
-    
+
     # Near deadline (active incidents with < 20% time remaining, not overdue)
     near_deadline_count = 0
     if active_ids:
@@ -341,8 +392,8 @@ async def sla_stats(
         )
         if dept_filter:
             query = query.where(*dept_filter)
-        if date_filter:
-            query = query.where(*date_filter)
+        if active_date_filter:
+            query = query.where(*active_date_filter)
         active_incidents = await db.execute(query)
         for incident in active_incidents.scalars().all():
             if incident.sla_deadline:
@@ -362,11 +413,11 @@ async def sla_stats(
         )
         if dept_filter:
             query = query.where(*dept_filter)
-        if date_filter:
-            query = query.where(*date_filter)
+        if closed_date_filter:
+            query = query.where(*closed_date_filter)
         on_time_result = await db.execute(query)
         on_time_count = on_time_result.scalar() or 0
-    
+
     # Active on time (not overdue and not was_overdue)
     if active_ids:
         query = select(func.count()).select_from(Incident).where(
@@ -376,8 +427,8 @@ async def sla_stats(
         )
         if dept_filter:
             query = query.where(*dept_filter)
-        if date_filter:
-            query = query.where(*date_filter)
+        if active_date_filter:
+            query = query.where(*active_date_filter)
         active_on_time_result = await db.execute(query)
         on_time_count += active_on_time_result.scalar() or 0
     
@@ -391,6 +442,8 @@ async def sla_stats(
 @app.get("/reports/overdue-incidents")
 async def overdue_incidents_list(
     department_id: str = None,
+    date_from: str = None,
+    date_to: str = None,
     limit: int = 50,
     db=Depends(get_db)
 ):
@@ -423,6 +476,40 @@ async def overdue_incidents_list(
     
     if department_id:
         query = query.where(Incident.department_id == uuid.UUID(department_id))
+    
+    # Apply date range filter: active by sla_deadline, closed by resolved_at / closed_at
+    date_conditions = []
+    if date_from:
+        try:
+            from_date = datetime.strptime(date_from, "%Y-%m-%d")
+            date_conditions.append(
+                or_(
+                    and_(Incident.status_id.in_(active_ids), Incident.sla_deadline >= from_date),
+                    and_(
+                        Incident.status_id.in_(closed_ids),
+                        or_(Incident.resolved_at >= from_date, Incident.closed_at >= from_date)
+                    )
+                )
+            )
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            to_date = datetime.strptime(date_to, "%Y-%m-%d")
+            to_date = to_date.replace(hour=23, minute=59, second=59)
+            date_conditions.append(
+                or_(
+                    and_(Incident.status_id.in_(active_ids), Incident.sla_deadline <= to_date),
+                    and_(
+                        Incident.status_id.in_(closed_ids),
+                        or_(Incident.resolved_at <= to_date, Incident.closed_at <= to_date)
+                    )
+                )
+            )
+        except ValueError:
+            pass
+    if date_conditions:
+        query = query.where(*date_conditions)
     
     result = await db.execute(query)
     incidents = result.scalars().all()

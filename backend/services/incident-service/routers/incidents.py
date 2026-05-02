@@ -48,6 +48,7 @@ def incident_to_dict(incident: Incident) -> dict:
     sla_percentage = 0
     sla_remaining = None
     sla_status_color = "green"
+    is_overdue = incident.overdue
     
     if incident.sla_deadline:
         sla_percentage = get_sla_percentage(
@@ -62,7 +63,13 @@ def incident_to_dict(incident: Incident) -> dict:
             incident.resolved_at,
             incident.closed_at
         )
-        sla_status_color = get_sla_status_color(sla_percentage, incident.overdue)
+        # Динамически определяем просрочку: для активных — по текущему времени,
+        # для закрытых/решённых — используем зафиксированное was_overdue
+        if not incident.resolved_at and not incident.closed_at:
+            is_overdue = datetime.utcnow() > incident.sla_deadline
+        else:
+            is_overdue = incident.was_overdue if incident.was_overdue is not None else incident.overdue
+        sla_status_color = get_sla_status_color(sla_percentage, is_overdue)
     
     return {
         "id": str(incident.id),
@@ -88,7 +95,7 @@ def incident_to_dict(incident: Incident) -> dict:
         "sla_percentage": round(sla_percentage, 1),
         "sla_remaining": sla_remaining,
         "sla_status_color": sla_status_color,
-        "overdue": incident.overdue,
+        "overdue": is_overdue if incident.sla_deadline else incident.overdue,
         "created_at": incident.created_at.isoformat() if incident.created_at else None,
         "assigned_at": incident.assigned_at.isoformat() if incident.assigned_at else None,
         "in_progress_at": incident.in_progress_at.isoformat() if incident.in_progress_at else None,

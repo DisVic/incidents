@@ -446,7 +446,7 @@ const deleteIncident = async () => {
                   title="Просрочен"
                 ></span>
                 <span
-                  v-else-if="incident.sla_percentage >= 80 && !['Решён', 'Закрыт'].includes(incident.status_name)"
+                  v-else-if="incident.sla_percentage >= 80 && !incident.overdue && !['Решён', 'Закрыт'].includes(incident.status_name)"
                   class="w-2 h-2 rounded-full bg-yellow-500 flex-shrink-0"
                   title="Близко к дедлайну"
                 ></span>
@@ -493,7 +493,7 @@ const deleteIncident = async () => {
                   :class="[
                     'text-sm',
                     incident.overdue && !['Решён', 'Закрыт'].includes(incident.status_name) ? 'text-red-600 font-medium' : 
-                    incident.sla_percentage >= 80 && !['Решён', 'Закрыт'].includes(incident.status_name) ? 'text-yellow-600 font-medium' : 'text-slate-600'
+                    incident.sla_percentage >= 80 && !incident.overdue && !['Решён', 'Закрыт'].includes(incident.status_name) ? 'text-yellow-600 font-medium' : 'text-slate-600'
                   ]"
                 >
                   {{ formatDate(incident.sla_deadline) }}
@@ -505,7 +505,7 @@ const deleteIncident = async () => {
                   просрочен
                 </span>
                 <span 
-                  v-else-if="incident.sla_percentage >= 80 && !['Решён', 'Закрыт'].includes(incident.status_name)" 
+                  v-else-if="incident.sla_percentage >= 80 && !incident.overdue && !['Решён', 'Закрыт'].includes(incident.status_name)"
                   class="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded"
                 >
                   скоро

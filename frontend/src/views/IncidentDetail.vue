@@ -269,7 +269,7 @@ const slaContainerClass = computed(() => {
   const isActive = !['Решён', 'Закрыт'].includes(incident.value.status_name)
   if (!isActive) return 'bg-slate-100 border-slate-300'  // Для закрытых инцидентов
   if (incident.value.overdue && isActive) return 'bg-red-100 border-red-300'
-  if (incident.value.sla_percentage >= 80 && isActive) return 'bg-yellow-50 border-yellow-300'
+  if (incident.value.sla_percentage >= 80 && !incident.value.overdue && isActive) return 'bg-yellow-50 border-yellow-300'
   return 'bg-slate-100'
 })
 
@@ -277,7 +277,7 @@ const slaTextClass = computed(() => {
   if (!incident.value) return 'text-slate-600'
   const isActive = !['Решён', 'Закрыт'].includes(incident.value.status_name)
   if (incident.value.overdue && isActive) return 'text-red-600'
-  if (incident.value.sla_percentage >= 80 && isActive) return 'text-yellow-600'
+  if (incident.value.sla_percentage >= 80 && !incident.value.overdue && isActive) return 'text-yellow-600'
   // Для закрытых/решённых — показываем финальный процент зелёным
   if (!isActive) return 'text-green-600'
   return 'text-slate-600'
@@ -656,7 +656,7 @@ const deleteComment = async (comment) => {
                   Просрочен
                 </span>
                 <span
-                  v-else-if="incident.sla_percentage >= 80 && !['Решён', 'Закрыт'].includes(incident.status_name)"
+                  v-else-if="incident.sla_percentage >= 80 && !incident.overdue && !['Решён', 'Закрыт'].includes(incident.status_name)"
                   class="px-3 py-1 rounded-lg text-sm font-medium bg-yellow-100 text-yellow-700"
                 >
                   Скоро дедлайн
